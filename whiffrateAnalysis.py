@@ -271,6 +271,14 @@ for seed in list(range(1,51)):
 
 print('Change Avg: ', sum(deltas) / len(deltas) * 100)
 
+## Sanity check
+whiffDataRighty = whiffData[whiffData.BatterSide == 'Right']
+whiffDataLefty = whiffData[whiffData.BatterSide == 'Left']
+
+print(whiffDataRighty['PlateHeight'].corr(whiffDataRighty['swing_prob']))
+print(whiffDataLefty['PlateHeight'].corr(whiffDataLefty['swing_prob']))
+
+
 
 
 #%%
@@ -324,6 +332,37 @@ for variable in varsToInclude:
             print(variable, variable2, score)
 
 
+#%%
+
+### SWING PROB ANALYSIS PART II ### 
+
+### RESULT: Plate Side and Count have the biggest impacts 
+
+## Plate Side
+print(whiffRegressionData['PlateSide'].corr(whiffRegressionData['swing_prob']))
+
+## Let's split based off batter side 
+whiffDataRighty = whiffData[whiffData.BatterSide == 'Right']
+whiffDataLefty = whiffData[whiffData.BatterSide == 'Left']
+
+print(whiffDataRighty['PlateSide'].corr(whiffDataRighty['swing_prob']))
+print(whiffDataLefty['PlateSide'].corr(whiffDataLefty['swing_prob']))
+
+
+## Count 
+print('COUNT')
+print(whiffRegressionData['Count_00'].corr(whiffDataRighty['swing_prob']))
+print(whiffRegressionData['Count_01'].corr(whiffRegressionData['swing_prob']))
+print(whiffRegressionData['Count_02'].corr(whiffRegressionData['swing_prob']))
+print(whiffRegressionData['Count_10'].corr(whiffRegressionData['swing_prob']))
+print(whiffRegressionData['Count_11'].corr(whiffRegressionData['swing_prob']))
+print(whiffRegressionData['Count_12'].corr(whiffRegressionData['swing_prob']))
+print(whiffRegressionData['Count_20'].corr(whiffRegressionData['swing_prob']))
+print(whiffRegressionData['Count_21'].corr(whiffRegressionData['swing_prob']))
+print(whiffRegressionData['Count_22'].corr(whiffRegressionData['swing_prob']))
+print(whiffRegressionData['Count_30'].corr(whiffRegressionData['swing_prob']))
+print(whiffRegressionData['Count_31'].corr(whiffRegressionData['swing_prob']))
+print(whiffRegressionData['Count_32'].corr(whiffRegressionData['swing_prob']))
 
 
 
@@ -331,18 +370,7 @@ for variable in varsToInclude:
 
 
 
-
-
-
-
-
-
-
-
-
-
-
-
+#%%
 
 
 
