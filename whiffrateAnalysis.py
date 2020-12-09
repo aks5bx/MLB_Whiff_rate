@@ -169,8 +169,8 @@ varsToInclude = ['ReleaseSpeed', 'InducedVertBreak', 'HorzBreak', 'PlateHeight',
 
 rsqValues = []
 for variable in varsToInclude:
-     for variable2 in varsToInclude:
-        varList = list(set(varsToInclude) - set([variable, variable2]))
+     #for variable2 in varsToInclude:
+        varList = list(set(varsToInclude) - set([variable]))
         ## Here we remove the whiff probability (gs and non-gs) values
         X = whiffRegressionData[varList]
         y = whiffRegressionData['whiff_prob'].values.reshape(-1,1)
@@ -188,7 +188,9 @@ for variable in varsToInclude:
         rsqValues.append(score)
 
         if score < 0.6:
-            print(variable, variable2, score)
+            print(variable, score)
+
+## Plate Height and Swing Prob combine for 63%, essentially even contribution (slightly more towards plate height)
 
 ### Significant variables: 
 sigVarsWhiff = ['PlateHeight', 'swing_prob']
@@ -215,61 +217,66 @@ print(regressor.score(x_test,y_test))
 #%%
 ### PLATE HEIGHT - ANALYSIS ### 
 
-### Simulation - Baseline
+### Simulation - Whiff Rate Baseline
 deltas = []
-for seed in list(range(1,51)):
+avgs = []
+for std in tqdm([1,2,3,4,5]):
+    for seed in list(range(1,51)):
 
-    x_train, x_test, y_train, y_test = train_test_split(X, y, test_size = 0.15, random_state = seed)
+        x_train, x_test, y_train, y_test = train_test_split(X, y, test_size = 0.15, random_state = seed)
 
-    regressor = SVR(kernel='rbf')
-    regressor.fit(x_train,y_train)
-    print('MODEL SCORE ', regressor.score(x_test,y_test))
+        regressor = SVR(kernel='rbf')
+        regressor.fit(x_train,y_train)
+        #print('MODEL SCORE ', regressor.score(x_test,y_test))
 
 
-    x_testDF = pd.DataFrame(x_test)
-    x_testDF.columns = varsToInclude
+        x_testDF = pd.DataFrame(x_test)
+        x_testDF.columns = varsToInclude
 
-    preds = []
-    for idx, row in x_testDF.iterrows(): 
-        preds.append(regressor.predict(row.values.reshape(1,-1)))
+        preds = []
+        for idx, row in x_testDF.iterrows(): 
+            preds.append(regressor.predict(row.values.reshape(1,-1)))
 
-    ## Normalize Data to within 0 and 1 
-    minVal = min(preds)[0]
-    maxVal = max(preds)[0]
-    rangeVal = maxVal - minVal
-    scaledVals = []
-    for val in preds:
-        val = val[0]
-        scaledVal = (val - minVal) / (rangeVal)
-        scaledVals.append(scaledVal)
+        ## Normalize Data to within 0 and 1 
+        minVal = min(preds)[0]
+        maxVal = max(preds)[0]
+        rangeVal = maxVal - minVal
+        scaledVals = []
+        for val in preds:
+            val = val[0]
+            scaledVal = (val - minVal) / (rangeVal)
+            scaledVals.append(scaledVal)
 
-    baselineAvg = sum(scaledVals) / len(scaledVals)
+        baselineAvg = sum(scaledVals) / len(scaledVals)
 
-    ### Simulation - Increase
-    oneStDev = abs(x_testDF['PlateHeight'].std())
-    x_testDF['PlateHeight'] = x_testDF['PlateHeight'] - oneStDev
+        ### Simulation - Increase
+        oneStDev = abs(x_testDF['PlateHeight'].std())
+        x_testDF['PlateHeight'] = random.uniform(0.9,1.1) # x_testDF['PlateHeight'] - (std * oneStDev) 
 
-    preds = []
-    for idx, row in x_testDF.iterrows(): 
-        preds.append(regressor.predict(row.values.reshape(1,-1)))
+        preds = []
+        for idx, row in x_testDF.iterrows(): 
+            preds.append(regressor.predict(row.values.reshape(1,-1)))
 
-    ## Normalize Data to within 0 and 1 
-    minVal = min(preds)[0]
-    maxVal = max(preds)[0]
-    rangeVal = maxVal - minVal
-    scaledVals = []
-    for val in preds:
-        val = val[0]
-        scaledVal = (val - minVal) / (rangeVal)
-        scaledVals.append(scaledVal)
+        ## Normalize Data to within 0 and 1 
+        minVal = min(preds)[0]
+        maxVal = max(preds)[0]
+        rangeVal = maxVal - minVal
+        scaledVals = []
+        for val in preds:
+            val = val[0]
+            scaledVal = (val - minVal) / (rangeVal)
+            scaledVals.append(scaledVal)
 
-    increasedAvg = sum(scaledVals) / len(scaledVals)
+        increasedAvg = sum(scaledVals) / len(scaledVals)
 
-    delta = (increasedAvg - baselineAvg) / baselineAvg 
-    print('DELTA ', delta)
-    print('----------------------------')
+        delta = (increasedAvg - baselineAvg) / baselineAvg 
+        deltas.append(delta)
+        #print('DELTA ', delta)
+        #print('----------------------------')
 
-print('Change Avg: ', sum(deltas) / len(deltas) * 100)
+    deltaAvg = sum(deltas) / len(deltas) * 100
+    avgs.append(deltaAvg)
+    print('Change Avg: ', deltaAvg)
 
 ## Sanity check
 whiffDataRighty = whiffData[whiffData.BatterSide == 'Right']
@@ -277,6 +284,10 @@ whiffDataLefty = whiffData[whiffData.BatterSide == 'Left']
 
 print(whiffDataRighty['PlateHeight'].corr(whiffDataRighty['swing_prob']))
 print(whiffDataLefty['PlateHeight'].corr(whiffDataLefty['swing_prob']))
+
+
+
+
 
 
 
@@ -300,12 +311,12 @@ varsToInclude = ['Inning', 'PAofInning', 'ReleaseSpeed', 'InducedVertBreak', 'Ho
                             'Count_11', 'Count_12', 'Count_20', 'Count_21', 'Count_22', 'Count_30',
                             'Count_31', 'Count_32']
 
-varsToIncludeSwing = []
-for var in varsToInclude:
-    corr = whiffRegressionData[var].corr(whiffRegressionData['swing_prob'])
-    if corr > 0.075 or corr < -0.075:
-        print(var)
-        varsToIncludeSwing.append(var)
+# varsToIncludeSwing = []
+# for var in varsToInclude:
+#     corr = whiffRegressionData[var].corr(whiffRegressionData['swing_prob'])
+#     if corr > 0.075 or corr < -0.075:
+#         print(var)
+#         varsToIncludeSwing.append(var)
 
 
 rsqValues = []
@@ -328,8 +339,33 @@ for variable in varsToInclude:
         score = regressor.score(x_test, y_test)
         rsqValues.append(score)
 
-        if score < 0.5:
+        print(score)
+
+        if score < 0.6:
             print(variable, variable2, score)
+
+#%%
+## Actual Model 
+## Here we remove the whiff probability (gs and non-gs) values
+X = whiffRegressionData[varsToInclude]
+y = whiffRegressionData['swing_prob'].values.reshape(-1,1)
+
+sc_X = StandardScaler()
+sc_y = StandardScaler()
+X = sc_X.fit_transform(X)
+y = sc_y.fit_transform(y)
+
+x_train, x_test, y_train, y_test = train_test_split(X, y, test_size = 0.15, random_state = 5)
+
+regressor = SVR(kernel='rbf')
+regressor.fit(x_train,y_train)
+score = regressor.score(x_test, y_test)
+rsqValues.append(score)
+
+print(score)
+
+## Count is +6%, Plate Side is 33% 
+
 
 
 #%%
@@ -345,8 +381,10 @@ print(whiffRegressionData['PlateSide'].corr(whiffRegressionData['swing_prob']))
 whiffDataRighty = whiffData[whiffData.BatterSide == 'Right']
 whiffDataLefty = whiffData[whiffData.BatterSide == 'Left']
 
-print(whiffDataRighty['PlateSide'].corr(whiffDataRighty['swing_prob']))
-print(whiffDataLefty['PlateSide'].corr(whiffDataLefty['swing_prob']))
+print('Right', whiffDataRighty['PlateSide'].corr(whiffDataRighty['swing_prob']))
+print('Left', whiffDataLefty['PlateSide'].corr(whiffDataLefty['swing_prob']))
+
+print('swingProb', whiffRegressionData['swing_prob'].corr(whiffDataRighty['whiff_prob']))
 
 
 ## Count 
@@ -366,6 +404,79 @@ print(whiffRegressionData['Count_32'].corr(whiffRegressionData['swing_prob']))
 
 
 
+#%%
+
+### Simulation - Swing Rate Baseline
+deltas = []
+avgs = []
+for std in tqdm([1,2,3,4,5]):
+    for seed in list(range(1,51)):
+
+        x_train, x_test, y_train, y_test = train_test_split(X, y, test_size = 0.15, random_state = seed)
+
+        regressor = SVR(kernel='rbf')
+        regressor.fit(x_train,y_train)
+        #print('MODEL SCORE ', regressor.score(x_test,y_test))
+
+
+        x_testDF = pd.DataFrame(x_test)
+        x_testDF.columns = varsToInclude
+
+        preds = []
+        for idx, row in x_testDF.iterrows(): 
+            preds.append(regressor.predict(row.values.reshape(1,-1)))
+
+        ## Normalize Data to within 0 and 1 
+        minVal = min(preds)[0]
+        maxVal = max(preds)[0]
+        rangeVal = maxVal - minVal
+        scaledVals = []
+        for val in preds:
+            val = val[0]
+            scaledVal = (val - minVal) / (rangeVal)
+            scaledVals.append(scaledVal)
+
+        baselineAvg = sum(scaledVals) / len(scaledVals)
+
+        ### Simulation - Increase
+        oneStDev = abs(x_testDF['PlateHeight'].std())
+        x_testDF['PlateHeight'] = x_testDF['PlateHeight'] - (std * oneStDev) 
+
+        preds = []
+        for idx, row in x_testDF.iterrows(): 
+            preds.append(regressor.predict(row.values.reshape(1,-1)))
+
+        ## Normalize Data to within 0 and 1 
+        minVal = min(preds)[0]
+        maxVal = max(preds)[0]
+        rangeVal = maxVal - minVal
+        scaledVals = []
+        for val in preds:
+            val = val[0]
+            scaledVal = (val - minVal) / (rangeVal)
+            scaledVals.append(scaledVal)
+
+        increasedAvg = sum(scaledVals) / len(scaledVals)
+
+        delta = (increasedAvg - baselineAvg) / baselineAvg 
+        deltas.append(delta)
+        #print('DELTA ', delta)
+        #print('----------------------------')
+    deltaAvg = sum(deltas) / len(deltas) * 100
+    avgs.append(deltaAvg)
+    print('Change Avg: ', deltaAvg)
+    print('------------------------------')
+
+## Sanity check
+whiffDataRighty = whiffData[whiffData.BatterSide == 'Right']
+whiffDataLefty = whiffData[whiffData.BatterSide == 'Left']
+
+print(whiffDataRighty['PlateHeight'].corr(whiffDataRighty['swing_prob']))
+print(whiffDataLefty['PlateHeight'].corr(whiffDataLefty['swing_prob']))
+
+
+
+
 
 
 
@@ -373,10 +484,151 @@ print(whiffRegressionData['Count_32'].corr(whiffRegressionData['swing_prob']))
 #%%
 
 
+### Plate Side, Righty
+
+varsToInclude = ['Inning', 'PAofInning', 'ReleaseSpeed', 'InducedVertBreak', 'HorzBreak',
+                            'ReleaseHeight', 'ReleaseSide', 'Extension', 'PlateHeight', 'PlateSide',
+                            'SpinRate', 'SpinAxis',
+                            'BatterSide_Left',
+                            'BatterSide_Right', 'PitchType_CHANGEUP', 'PitchType_FASTBALL',
+                            'PitchType_SLIDER', 'Count_00', 'Count_01', 'Count_02', 'Count_10',
+                            'Count_11', 'Count_12', 'Count_20', 'Count_21', 'Count_22', 'Count_30',
+                            'Count_31', 'Count_32']
+
+
+whiffDataRighty = whiffRegressionData[whiffRegressionData.BatterSide_Right == 1]
+
+X = whiffDataRighty[varsToInclude]
+y = whiffDataRighty['swing_prob'].values.reshape(-1,1)
+
+sc_X = StandardScaler()
+sc_y = StandardScaler()
+X = sc_X.fit_transform(X)
+y = sc_y.fit_transform(y)
+
+x_train, x_test, y_train, y_test = train_test_split(X, y, test_size = 0.15, random_state = 5)
+
+regressor = SVR(kernel='rbf')
+regressor.fit(x_train,y_train)
+score = regressor.score(x_test, y_test)
+rsqValues.append(score)
+
+print(score)
+
+
+### Simulation - Plate Side, Righty
+deltas = []
+avgs = []
+for std in tqdm([1,2,3,4,5]):
+    for seed in list(range(1,101)):
+
+        x_train, x_test, y_train, y_test = train_test_split(X, y, test_size = 0.15, random_state = seed)
+
+        regressor = SVR(kernel='rbf')
+        regressor.fit(x_train,y_train)
+        #print('MODEL SCORE ', regressor.score(x_test,y_test))
+
+
+        x_testDF = pd.DataFrame(x_test)
+        x_testDF.columns = varsToInclude
+
+        preds = []
+        for idx, row in x_testDF.iterrows(): 
+            preds.append(regressor.predict(row.values.reshape(1,-1)))
+
+        ## Normalize Data to within 0 and 1 
+        minVal = min(preds)[0]
+        maxVal = max(preds)[0]
+        rangeVal = maxVal - minVal
+        scaledVals = []
+        for val in preds:
+            val = val[0]
+            scaledVal = (val - minVal) / (rangeVal)
+            scaledVals.append(scaledVal)
+
+        baselineAvg = sum(scaledVals) / len(scaledVals)
+
+        ### Simulation - Increase
+        oneStDev = abs(x_testDF['PlateHeight'].std())
+        x_testDF['PlateHeight'] = random.uniform(-0.5,1.1) #x_testDF['PlateHeight'] - (std * oneStDev) 
+
+        preds = []
+        for idx, row in x_testDF.iterrows(): 
+            preds.append(regressor.predict(row.values.reshape(1,-1)))
+
+        ## Normalize Data to within 0 and 1 
+        minVal = min(preds)[0]
+        maxVal = max(preds)[0]
+        rangeVal = maxVal - minVal
+        scaledVals = []
+        for val in preds:
+            val = val[0]
+            scaledVal = (val - minVal) / (rangeVal)
+            scaledVals.append(scaledVal)
+
+        increasedAvg = sum(scaledVals) / len(scaledVals)
+
+        delta = (increasedAvg - baselineAvg) / baselineAvg 
+        deltas.append(delta)
+        #print('DELTA ', delta)
+        #print('----------------------------')
+    deltaAvg = sum(deltas) / len(deltas) * 100
+    avgs.append(deltaAvg)
+    print('Change Avg: ', deltaAvg)
+    print('------------------------------')
 
 
 
 
+
+
+
+
+#%%
+### Plate Height Correlation 
+
+print(whiffDataRighty['PlateHeight'].corr(whiffDataRighty['whiff_prob']))
+print(whiffDataLefty['PlateHeight'].corr(whiffDataLefty['whiff_prob']))
+
+
+
+
+
+
+#%%
+
+## Plate Side 
+whiffDataRighty = whiffData[whiffData.BatterSide == 'Right']
+whiffDataLefty = whiffData[whiffData.BatterSide == 'Left']
+
+print(whiffDataRighty['PlateSide'].mean())
+print(whiffDataRighty['PlateSide'].std())
+
+for threshhold in list(np.linspace(-3,3,100)):
+    avg = whiffDataRighty[abs(whiffDataRighty.PlateSide - threshhold) < .2]['whiff_prob'].mean()
+
+    print(threshhold, '              ', avg)
+
+
+
+## Righty Optimal Range: -0.5 to 1.1
+
+
+
+print(whiffDataLefty['PlateSide'].mean())
+print(whiffDataLefty['PlateSide'].std())
+
+
+for threshhold in list(np.linspace(-3,3,100)):
+    avg = whiffDataLefty[abs(whiffDataLefty.PlateSide - threshhold) < .2]['whiff_prob'].mean()
+
+    print(threshhold, '              ', avg)
+
+## Lefty Optimal Range: 0.25 to 1.25 
+
+#%%
+#whiffDataLefty['PlateSide'].hist(bins = 30)
+whiffDataRighty['PlateSide'].hist(bins = 30)
 
 
 
