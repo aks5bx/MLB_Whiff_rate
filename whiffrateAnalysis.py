@@ -521,7 +521,7 @@ deltas = []
 avgs = []
 for std in tqdm([1,2,3,4,5]):
     for seed in list(range(1,101)):
-
+        seed = random.randint(1,10000)
         x_train, x_test, y_train, y_test = train_test_split(X, y, test_size = 0.15, random_state = seed)
 
         regressor = SVR(kernel='rbf')
@@ -604,12 +604,24 @@ whiffDataLefty = whiffData[whiffData.BatterSide == 'Left']
 print(whiffDataRighty['PlateSide'].mean())
 print(whiffDataRighty['PlateSide'].std())
 
+avgs = [] 
+avgswo = []
 for threshhold in list(np.linspace(-3,3,100)):
     avg = whiffDataRighty[abs(whiffDataRighty.PlateSide - threshhold) < .2]['whiff_prob'].mean()
 
-    print(threshhold, '              ', avg)
+    if math.isnan(avg):
+        print('non')
+        continue
 
+    if threshhold > -0.5 and threshhold < 1.1:
+        avgs.append(avg)
+    else:
+        avgswo.append(avg)
 
+    #print(threshhold, '              ', avg)
+
+print(sum(avgswo) / len(avgswo))
+print(sum(avgs) / len(avgs))
 
 ## Righty Optimal Range: -0.5 to 1.1
 
@@ -618,11 +630,26 @@ for threshhold in list(np.linspace(-3,3,100)):
 print(whiffDataLefty['PlateSide'].mean())
 print(whiffDataLefty['PlateSide'].std())
 
-
+avgs = [] 
+avgswo = []
 for threshhold in list(np.linspace(-3,3,100)):
     avg = whiffDataLefty[abs(whiffDataLefty.PlateSide - threshhold) < .2]['whiff_prob'].mean()
 
-    print(threshhold, '              ', avg)
+    if math.isnan(avg):
+        print('non')
+        continue
+
+    if threshhold > 0.25 and threshhold < 1.25:
+        avgs.append(avg)
+    else:
+        avgswo.append(avg)
+
+    #print(threshhold, '              ', avg)
+
+print(sum(avgswo) / len(avgswo))
+print(sum(avgs) / len(avgs))
+
+
 
 ## Lefty Optimal Range: 0.25 to 1.25 
 

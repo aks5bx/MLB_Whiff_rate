@@ -174,6 +174,21 @@ sigVars = ['ReleaseSpeed', 'InducedVertBreak', 'HorzBreak', 'PlateHeight', 'Spin
 # %%
 
 
+whiffRegressionData['PlateHeight'].std()
+
+for threshhold in [2.5, 2.4, 2.3, 2.2, 2.1, 2, 1.9, 1.8, 1.7, 1.6, 1.5, 1.4, 1.3, 1.2, 1.1, 1, .9, .8, .7, .6, .5]:
+    avg = whiffRegressionData[abs(whiffRegressionData.PlateHeight - threshhold) < .2]['whiff_prob'].mean()
+    print(threshhold, avg)
+
+# %%
+
+whiffRegressionData['PlateSide'].std()
 
 
+
+
+
+
+
+whiffRegressionData['PlateHeight'].hist(bins = 20)
 # %%
