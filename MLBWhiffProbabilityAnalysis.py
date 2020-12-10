@@ -1098,7 +1098,7 @@ for iter in tqdm([1,2,3,4,5]):
         baselineAvg = sum(scaledVals) / len(scaledVals)
 
         ### Simulation - Change Values in Prediction Set
-        x_testDF['PlateSide'] = random.uniform(0.25,1.25)  
+        x_testDF['PlateSide'] = random.uniform(-0.5,1.1)  
         x_testDF['PlateHeight'] = random.uniform(0.9,1.1) 
 
         preds = []
@@ -1135,8 +1135,9 @@ print(sum(avgs) / len(avgs))
 ########################
 ### Weighted Average ###
 ######################## 
-wAvg = ((10 * len(whiffDataRighty)) + (28 * len(whiffDataLefty))) / (len(whiffDataRighty) + len(whiffDataLefty))
+wAvg = ((25 * len(whiffDataRighty)) + (28 * len(whiffDataLefty))) / (len(whiffDataRighty) + len(whiffDataLefty))
 
+## The data confirms that when combined, these changes increase whiff prob by x26%
 
 
 
