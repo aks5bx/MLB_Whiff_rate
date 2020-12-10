@@ -580,21 +580,6 @@ for std in tqdm([1,2,3,4,5]):
 
 
 
-
-
-
-
-#%%
-### Plate Height Correlation 
-
-print(whiffDataRighty['PlateHeight'].corr(whiffDataRighty['whiff_prob']))
-print(whiffDataLefty['PlateHeight'].corr(whiffDataLefty['whiff_prob']))
-
-
-
-
-
-
 #%%
 
 ## Plate Side 
@@ -661,7 +646,25 @@ whiffDataRighty['PlateSide'].hist(bins = 30)
 
 
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 # %%
+'''
 ### MODEL IMPLEMENTATION, REGRESSION - WHIFF ### 
 ## First Run
 varsToInclude = ['Inning', 'PAofInning', 'ReleaseSpeed', 'InducedVertBreak', 'HorzBreak',
@@ -794,4 +797,5 @@ sigVars_Swing = ['HorzBreak', 'InducedVertBreak', 'PlateSide', 'ReleaseHeight', 
 # sigVars_Whiff
 
 sns.scatterplot(data = whiffRegressionData, x = 'PitchType_FASTBALL', y = 'whiff_prob')
+'''
 # %%
