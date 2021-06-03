@@ -1,4 +1,4 @@
-# MLB Whiff Probability Analysis
+# MLB Whiff Probability Analysis (download Powerpoint for Deeper Explanation!)
 
 The prompt for this project is as follows: 
 
