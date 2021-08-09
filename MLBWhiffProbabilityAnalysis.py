@@ -70,10 +70,9 @@ whiffData['HorzBreak'].std()
 ## All the numeric columns look like they display no skew when comparing the null rows and the non null rows (main set)
 whiffData = whiffData.dropna()
 
-
-
-
-
+## Spin Axis should be from 0 - 360 - there are ~100 incorrectly entered rows 
+## We cannot guess what the correct value is so we drop these 
+whiffData = whiffData[whiffData.SpinAxis >= 0]
 
 #%% 
 ######################################
@@ -120,11 +119,6 @@ for col in categoricalCols:
 ## As a result, we simply remove the 50 rows where the Spin Rate is 0 (likely a data quality issue) 
 whiffData = whiffData[whiffData.SpinRate != 0]
 
-
-
-
-
-
 # %%
 ############################
 ### CORRELATION ANALYSIS ###
@@ -165,15 +159,66 @@ whiffData = whiffData.drop(['Balls', 'Strikes', 'PitchofPA', 'Pitcher', 'Pitcher
 ########################### 
 
 ## For this analysis, we don't use Year or Date, given that we expect some change in the pitcher's behavior, it does not make sense to extrapolate trends over time (changes in behavior can change the nature of these trends)
-whiffRegressionData = whiffData.drop(['Date', 'Year'], axis = 1)
+whiffModelData = whiffData.drop(['Date', 'Year'], axis = 1)
 
 ## Here we want to create dummy variables for our categorical variables 
 ## We choose this over other techniques, such as target encoding because we don't have too many categorical variables
-whiffRegressionData = pd.get_dummies(whiffRegressionData)
+whiffModelData = pd.get_dummies(whiffModelData)
 
 
+## Separate predicting data (Independent Vars) with target data (Dependent Var)
+whiffModelDataY = whiffModelData[['whiff_prob']]
+
+## We cannot directly influence swing probability OR whiff proability given swing
+whiffModelDataX = whiffModelData.loc[:, whiffModelData.columns != 'whiff_prob']
+whiffModelDataX = whiffModelDataX.loc[:, whiffModelDataX.columns != 'swing_prob']
+whiffModelDataX = whiffModelDataX.loc[:, whiffModelDataX.columns != 'whiff_prob_gs']
 
 
+## Changing the nature of SpinAxis
+whiffModelDataX['TopSpin'] = 0
+whiffModelDataX['LeftSpin'] = 0
+whiffModelDataX['BackSpin'] = 0
+whiffModelDataX['RightSpin'] = 0
+
+
+def topSpinMagnitude(spinAxis): 
+    if spinAxis >= 0 and spinAxis < 90: 
+        topSpinDiff = abs(spinAxis - 0)
+        topSpinMagnitude = abs(90 - topSpinDiff)
+        return topSpinMagnitude
+    else:
+        return 0 
+
+def leftSpinMagnitude(spinAxis): 
+    if spinAxis > 0 and spinAxis < 180: 
+        leftSpinDiff = abs(spinAxis - 90)
+        leftSpinMagnitude = abs(90 - leftSpinDiff)
+        return leftSpinMagnitude
+    else:
+        return 0 
+
+def backSpinMagnitude(spinAxis): 
+    if spinAxis > 90 and spinAxis < 270: 
+        backSpinDiff = abs(spinAxis - 180)
+        backSpinMagnitude = abs(90 - backSpinDiff)
+        return backSpinMagnitude
+    else:
+        return 0 
+
+def rightSpinMagnitude(spinAxis): 
+    if spinAxis > 180 and spinAxis < 360: 
+        rightSpinDiff = abs(spinAxis - 270)
+        rightSpinMagnitude = abs(90 - rightSpinDiff)
+        return rightSpinMagnitude
+    else:
+        return 0 
+
+
+whiffModelDataX['TopSpin'] = whiffModelDataX.apply(lambda row : topSpinMagnitude(row['SpinAxis']), axis = 1)
+whiffModelDataX['LeftSpin'] = whiffModelDataX.apply(lambda row : leftSpinMagnitude(row['SpinAxis']), axis = 1)
+whiffModelDataX['BackSpin'] = whiffModelDataX.apply(lambda row : backSpinMagnitude(row['SpinAxis']), axis = 1)
+whiffModelDataX['RightSpin'] = whiffModelDataX.apply(lambda row : rightSpinMagnitude(row['SpinAxis']), axis = 1)
 
 
 #%% 
@@ -182,32 +227,32 @@ whiffRegressionData = pd.get_dummies(whiffRegressionData)
 #################################### 
 
 ## Visualize the target variable (no normal distribution based assumptions hold)
-whiffRegressionData['whiff_prob'].hist(bins = 20)
+whiffModelData['whiff_prob'].hist(bins = 20)
 
 ## Define skew 
 val = 0
 for i in range(0, 10): 
     if noisy:
         print('Min :', val)
-        print(len(whiffRegressionData[(whiffRegressionData.whiff_prob < val + .05) & (whiffRegressionData.whiff_prob > val)]))
+        print(len(whiffModelData[(whiffModelData.whiff_prob < val + .05) & (whiffModelData.whiff_prob > val)]))
         print('Max :', round(val,1) + .05)
         print('---------------')
 
     val += .05
 
 
-whiffRegressionData['whiff_prob_category'] = 0
-whiffRegressionData['whiff_prob_category'] = np.where((whiffRegressionData['whiff_prob'] < 0.05) & (whiffRegressionData['whiff_prob'] > 0), 1, whiffRegressionData['whiff_prob_category'])
-whiffRegressionData['whiff_prob_category'] = np.where((whiffRegressionData['whiff_prob'] < 0.1) & (whiffRegressionData['whiff_prob'] > 0.05), 2, whiffRegressionData['whiff_prob_category'])
-whiffRegressionData['whiff_prob_category'] = np.where((whiffRegressionData['whiff_prob'] < 0.15) & (whiffRegressionData['whiff_prob'] > 0.1), 3, whiffRegressionData['whiff_prob_category'])
-whiffRegressionData['whiff_prob_category'] = np.where((whiffRegressionData['whiff_prob'] < 0.2) & (whiffRegressionData['whiff_prob'] > 0.15), 4, whiffRegressionData['whiff_prob_category'])
-whiffRegressionData['whiff_prob_category'] = np.where((whiffRegressionData['whiff_prob'] < 0.25) & (whiffRegressionData['whiff_prob'] > 0.2), 5, whiffRegressionData['whiff_prob_category'])
-whiffRegressionData['whiff_prob_category'] = np.where((whiffRegressionData['whiff_prob'] < 0.3) & (whiffRegressionData['whiff_prob'] > 0.25), 6, whiffRegressionData['whiff_prob_category'])
-whiffRegressionData['whiff_prob_category'] = np.where((whiffRegressionData['whiff_prob'] < 0.35) & (whiffRegressionData['whiff_prob'] > 0.3), 7, whiffRegressionData['whiff_prob_category'])
-whiffRegressionData['whiff_prob_category'] = np.where((whiffRegressionData['whiff_prob'] > 0.35), 8, whiffRegressionData['whiff_prob_category'])
+whiffModelData['whiff_prob_category'] = 0
+whiffModelData['whiff_prob_category'] = np.where((whiffModelData['whiff_prob'] < 0.05) & (whiffModelData['whiff_prob'] > 0), 1, whiffModelData['whiff_prob_category'])
+whiffModelData['whiff_prob_category'] = np.where((whiffModelData['whiff_prob'] < 0.1) & (whiffModelData['whiff_prob'] > 0.05), 2, whiffModelData['whiff_prob_category'])
+whiffModelData['whiff_prob_category'] = np.where((whiffModelData['whiff_prob'] < 0.15) & (whiffModelData['whiff_prob'] > 0.1), 3, whiffModelData['whiff_prob_category'])
+whiffModelData['whiff_prob_category'] = np.where((whiffModelData['whiff_prob'] < 0.2) & (whiffModelData['whiff_prob'] > 0.15), 4, whiffModelData['whiff_prob_category'])
+whiffModelData['whiff_prob_category'] = np.where((whiffModelData['whiff_prob'] < 0.25) & (whiffModelData['whiff_prob'] > 0.2), 5, whiffModelData['whiff_prob_category'])
+whiffModelData['whiff_prob_category'] = np.where((whiffModelData['whiff_prob'] < 0.3) & (whiffModelData['whiff_prob'] > 0.25), 6, whiffModelData['whiff_prob_category'])
+whiffModelData['whiff_prob_category'] = np.where((whiffModelData['whiff_prob'] < 0.35) & (whiffModelData['whiff_prob'] > 0.3), 7, whiffModelData['whiff_prob_category'])
+whiffModelData['whiff_prob_category'] = np.where((whiffModelData['whiff_prob'] > 0.35), 8, whiffModelData['whiff_prob_category'])
 
 ## Aggregate each variable 
-groupedMeans = pd.DataFrame(whiffRegressionData.groupby(['whiff_prob_category']).mean())
+groupedMeans = pd.DataFrame(whiffModelData.groupby(['whiff_prob_category']).mean())
 groupedMeans['category'] = groupedMeans.index
 
 groupedMeans[['Inning', 'PAofInning', 'ReleaseSpeed', 'InducedVertBreak', 'HorzBreak',
@@ -217,33 +262,91 @@ groupedMeans[['Inning', 'PAofInning', 'ReleaseSpeed', 'InducedVertBreak', 'HorzB
                             'BatterSide_Right', 'PitchType_CHANGEUP', 'PitchType_FASTBALL',
                             'PitchType_SLIDER']]
 
+'''
 ## These are the variables that in this analysis, appear to be significant
 sigVars = ['ReleaseSpeed', 'InducedVertBreak', 'HorzBreak', 'PlateHeight', 'SpinRate', 'SpinAxis', 'swing_prob']
+'''
 
 
+#%%
+#####################################
+### FEATURE SELECTION WITH BORUTA ###
+#####################################
+
+from sklearn.ensemble import RandomForestRegressor
+from boruta import BorutaPy
+import random
 
 
+### Initialize Boruta
+forest = RandomForestRegressor(
+   n_jobs = -1, 
+   max_depth = 7, 
+   verbose = 2
+)
+boruta = BorutaPy(
+   estimator = forest, 
+   n_estimators = 'auto',
+   max_iter = 500, # number of trials to perform, 
+   verbose = 2
+)
+### modify datatype for Boruta (it accepts np.array, not pd.DataFrame)
+whiffModelDataX_Arr = whiffModelDataX.to_numpy()
+whiffModelDataY_Arr = whiffModelDataY.to_numpy()
 
 
+runBoruta = False
 
+if runBoruta:
+    boruta.fit(whiffModelDataX_Arr, whiffModelDataY_Arr)
+    ### print results
+    green_area = whiffModelDataX.columns[boruta.support_].to_list()
+    blue_area = whiffModelDataX.columns[boruta.support_weak_].to_list()
+    print('features in the green area:', green_area)
+    print('features in the blue area:', blue_area)
+
+columnsToKeep = [   'ReleaseSpeed',
+                    'InducedVertBreak',
+                    'HorzBreak',
+                    'Extension',
+                    'PlateHeight',
+                    'PlateSide',
+                    'SpinRate',
+                    'SpinAxis',
+                    'BatterSide_Right',
+                    'BatterSide_Left',
+                    'PitchType_CHANGEUP',
+                    'PitchType_FASTBALL',
+                    'PitchType_SLIDER'
+                    'Count_00', 
+                    'Count_01', 
+                    'Count_02', 
+                    'Count_10', 
+                    'Count_11', 
+                    'Count_12',
+                    'Count_20', 
+                    'Count_21', 
+                    'Count_22', 
+                    'Count_30', 
+                    'Count_31', 
+                    'Count_32'
+                    'LeftSpin', 
+                    'RightSpin',
+                    'BackSpin',
+                    'TopSpin']
 
 # %%
 ###############################################
 ### CHECKING VARIABLE CORRELATION FOR MODEL ###
 ############################################### 
 
-## Checking Correlation (takes a long time to run)
-pairPlot = sns.pairplot(data=whiffRegressionData,
-                  y_vars=['whiff_prob'],
-                  x_vars=['Inning', 'PAofInning', 'ReleaseSpeed', 'InducedVertBreak', 'HorzBreak',
-                            'ReleaseHeight', 'ReleaseSide', 'Extension', 'PlateHeight', 'PlateSide',
-                            'SpinRate', 'SpinAxis', 'swing_prob',
-                            'BatterSide_Left',
-                            'BatterSide_Right', 'PitchType_CHANGEUP', 'PitchType_FASTBALL',
-                            'PitchType_SLIDER', 'Count_00', 'Count_01', 'Count_02', 'Count_10',
-                            'Count_11', 'Count_12', 'Count_20', 'Count_21', 'Count_22', 'Count_30',
-                            'Count_31', 'Count_32'])
+runPairPlot = False
 
+if runPairPlot:
+    ## Checking Correlation (takes a long time to run)
+    pairPlot = sns.pairplot(data=whiffModelData,
+                    y_vars=['whiff_prob'],
+                    x_vars=columnsToKeep)
 
 ## Appears to be a non-linear, perhaps radial relationship 
 
@@ -255,24 +358,11 @@ pairPlot = sns.pairplot(data=whiffRegressionData,
 ### MODEL IMPLEMENTATION, SVR - WHIFF ###
 #########################################
 
-## Started off with all variables
-varsToInclude = ['Inning', 'PAofInning', 'ReleaseSpeed', 'InducedVertBreak', 'HorzBreak',
-                            'ReleaseHeight', 'ReleaseSide', 'Extension', 'PlateHeight', 'PlateSide',
-                            'SpinRate', 'SpinAxis', 'swing_prob',
-                            'BatterSide_Left',
-                            'BatterSide_Right', 'PitchType_CHANGEUP', 'PitchType_FASTBALL',
-                            'PitchType_SLIDER', 'Count_00', 'Count_01', 'Count_02', 'Count_10',
-                            'Count_11', 'Count_12', 'Count_20', 'Count_21', 'Count_22', 'Count_30',
-                            'Count_31', 'Count_32']
-
-## These were determined using backwards selection 
-varsToInclude = ['ReleaseSpeed', 'InducedVertBreak', 'HorzBreak', 'PlateHeight', 'SpinRate', 'SpinAxis', 'swing_prob']
-
 
 ## Baseline Model (with all variables included)
 ## Generate Model
-X = whiffRegressionData[varsToInclude]
-y = whiffRegressionData['whiff_prob'].values.reshape(-1,1)
+X = whiffModelData[columnsToKeep]
+y = whiffModelData['whiff_prob'].values.reshape(-1,1)
 
 sc_X = StandardScaler()
 sc_y = StandardScaler()
@@ -296,8 +386,8 @@ for variable in tqdm(varsToInclude):
         varList = list(set(varsToInclude) - set([variable, variable2]))
         
         ## Generate Model
-        X = whiffRegressionData[varList]
-        y = whiffRegressionData['whiff_prob'].values.reshape(-1,1)
+        X = whiffModelData[varList]
+        y = whiffModelData['whiff_prob'].values.reshape(-1,1)
 
         sc_X = StandardScaler()
         sc_y = StandardScaler()
@@ -346,8 +436,8 @@ varsToInclude = ['ReleaseSpeed', 'InducedVertBreak', 'HorzBreak', 'PlateHeight',
 
 ## Baseline Model (with all variables included)
 ## Generate Model
-X = whiffRegressionData[varsToInclude]
-y = whiffRegressionData['whiff_prob'].values.reshape(-1,1)
+X = whiffModelData[varsToInclude]
+y = whiffModelData['whiff_prob'].values.reshape(-1,1)
 
 sc_X = StandardScaler()
 sc_y = StandardScaler()
@@ -459,8 +549,8 @@ varsToInclude = ['Inning', 'PAofInning', 'ReleaseSpeed', 'InducedVertBreak', 'Ho
 
 ## Baseline Model 
 ## Generate Model
-X = whiffRegressionData[varsToInclude]
-y = whiffRegressionData['swing_prob'].values.reshape(-1,1)
+X = whiffModelData[varsToInclude]
+y = whiffModelData['swing_prob'].values.reshape(-1,1)
 
 sc_X = StandardScaler()
 sc_y = StandardScaler()
@@ -485,8 +575,8 @@ for variable in tqdm(varsToInclude):
         varList = list(set(varsToInclude) - set([variable, variable2]))
         
         ## Generate Model
-        X = whiffRegressionData[varList]
-        y = whiffRegressionData['swing_prob'].values.reshape(-1,1)
+        X = whiffModelData[varList]
+        y = whiffModelData['swing_prob'].values.reshape(-1,1)
 
         sc_X = StandardScaler()
         sc_y = StandardScaler()
@@ -520,10 +610,10 @@ for variable in tqdm(varsToInclude):
 
 
 ## Let's split based off batter side 
-whiffDataRighty = whiffRegressionData[whiffRegressionData.BatterSide_Right == 1]
-whiffDataLefty = whiffRegressionData[whiffRegressionData.BatterSide_Left == 1]
+whiffDataRighty = whiffModelData[whiffModelData.BatterSide_Right == 1]
+whiffDataLefty = whiffModelData[whiffModelData.BatterSide_Left == 1]
 
-# print('swingProb', whiffRegressionData['swing_prob'].corr(whiffDataRighty['whiff_prob']))
+# print('swingProb', whiffModelData['swing_prob'].corr(whiffDataRighty['whiff_prob']))
 
 ## Count 
 print('COUNT')
@@ -595,14 +685,14 @@ for threshhold in list(np.linspace(-2.5,3.5,100)):
 
 ## Plate Side Correlations
 if noisy:
-    print(whiffRegressionData['PlateSide'].corr(whiffRegressionData['swing_prob']))
+    print(whiffModelData['PlateSide'].corr(whiffModelData['swing_prob']))
     print('Right', whiffDataRighty['PlateSide'].corr(whiffDataRighty['swing_prob']))
     print('Left', whiffDataLefty['PlateSide'].corr(whiffDataLefty['swing_prob']))
 
 ### Splitting By Right vs Left Side Batters
 ### Plate Side, Righty ### 
 
-whiffDataRighty = whiffRegressionData[whiffRegressionData.BatterSide_Right == 1]
+whiffDataRighty = whiffModelData[whiffModelData.BatterSide_Right == 1]
 
 ### Generate Baseline Model
 ## Started off with all variables
@@ -717,7 +807,7 @@ print(sum(avgs) / len(avgs))
 ### Splitting By Right vs Left Side Batters
 ### Plate Side, Lefty ### 
 
-whiffDataLefty = whiffRegressionData[whiffRegressionData.BatterSide_Left == 1]
+whiffDataLefty = whiffModelData[whiffModelData.BatterSide_Left == 1]
 
 ### Generate Baseline Model
 ## Started off with all variables
@@ -907,7 +997,7 @@ print('With Optimal Range :', sum(avgs) / len(avgs))
 ### Splitting By Right vs Left Side Batters
 ### Plate Side, Righty ### 
 
-whiffDataRighty = whiffRegressionData[whiffRegressionData.BatterSide_Right == 1]
+whiffDataRighty = whiffModelData[whiffModelData.BatterSide_Right == 1]
 
 ### Generate Baseline Model
 ## Started off with all variables
@@ -1027,7 +1117,7 @@ print(sum(avgs) / len(avgs))
 ### Splitting By Right vs Left Side Batters
 ### Plate Side, Lefty ### 
 
-whiffDataLefty = whiffRegressionData[whiffRegressionData.BatterSide_Left == 1]
+whiffDataLefty = whiffModelData[whiffModelData.BatterSide_Left == 1]
 
 ### Generate Baseline Model
 ## Started off with all variables
