@@ -3,24 +3,34 @@
 ### IMPORTING LIBRARIES TO USE, READING IN DATA ###
 ###################################################
  
+## General Tools 
 import pandas as pd 
 import numpy as np 
 import seaborn as sns 
+import math 
+import random 
+
+## Sklearn Models
+from sklearn.preprocessing import StandardScaler
+from sklearn.model_selection import train_test_split
+from sklearn.linear_model import LinearRegression
+from sklearn.svm import SVR
+from sklearn.ensemble import RandomForestRegressor
+from sklearn.model_selection import RandomizedSearchCV
+
+## Specialized Tools
 from scipy import stats
 from collections import Counter
 import statsmodels.api as sm
-from sklearn.preprocessing import StandardScaler
-from sklearn.model_selection import train_test_split
-from sklearn.svm import SVR
-import math 
-import random 
 from tqdm import tqdm
+from boruta import BorutaPy
 
+## Reading in the Data Set
 whiffData = pd.read_csv('PitcherXData.csv')
 
-## Set noisy = True for all print statements
+## When "noisy" is set to True, the notebook prints out additional output
 noisy = True
-## Set max output to True to produce every graph 
+## When maxOutput is set to True, all graphs and plots are produced
 maxOutput = False
 
 #%%
@@ -28,21 +38,24 @@ maxOutput = False
 ### INITIAL DATA EXPLORATION AND CLEANING ### 
 #############################################
 
-## Identify categorical variables and numeric variables
+## Identify categorical variable columns and numeric variable columns
 numericCols = whiffData.select_dtypes(include=np.number).columns
 categoricalCols = list(set(whiffData.columns) - set(numericCols))
 
+## Print out the columns for viewing
 if noisy:
-    print(numericCols)
+    print('Numeric Columns : ', numericCols)
     print('>>>>>>>>>>>>>>>>>><<<<<<<<<<<<<<<<<')
-    print(categoricalCols)
+    print('Categorical Columns : ', categoricalCols)
     print('>>>>>>>>>>>>>>>>>><<<<<<<<<<<<<<<<<')
 
-## Detect Null values
+## Detect Null values, this data set that contains only rows where one or more values are Null is the "Null Dataset"
 whiffNulls = whiffData[whiffData.isnull().any(axis=1)]
 
 ## Confirm that Null values do not have significant skew before dropping null rows
 ## We want to avoid a situation where the values in the null rows significantly change the overall data
+
+## For each numeric column, compare the mean value of the full dataset to the mean value of the Null Dataset  
 for col in numericCols: 
     originalMean = whiffData[col].mean()
     nullMean = whiffNulls[col].mean()
@@ -50,6 +63,7 @@ for col in numericCols:
     if noisy:
         print(col, ': ', originalMean, ' ', nullMean)
 
+## For each categorical column, compare the values that show up in the entire data set versus the null dataset 
 for col in categoricalCols: 
     originalSet = set(whiffData[col])
     nullSet = set(whiffNulls[col])
@@ -61,13 +75,13 @@ for col in categoricalCols:
         print(nullSet)
 
 ## Worth looking into InducedVertBreak and HorzBreak from first glance
-## Induced vertical break has a standard deviation of around 6.5 - the null rows' aggregate InducedVertBreak is within 1 std of the main set 
+## Induced vertical break has a standard deviation of around 6.5 - the null rows' aggregate InducedVertBreak value is within 1 std of the main set 
 whiffData['InducedVertBreak'].std()
 
-## HorzBreak is over one standard deviation, but not by much. It is close, but acceptable to drop - no skew!
+## The null row's aggregate Horizontal Break value is over one standard deviation, but not by much. It is close, but acceptable to drop - very little skew
 whiffData['HorzBreak'].std()
 
-## All the numeric columns look like they display no skew when comparing the null rows and the non null rows (main set)
+## All the numeric columns look like they display no skew when comparing the null rows and the non null rows (main set), so we drop the nulls
 whiffData = whiffData.dropna()
 
 ## Spin Axis should be from 0 - 360 - there are ~100 incorrectly entered rows 
@@ -82,6 +96,7 @@ whiffData = whiffData[whiffData.SpinAxis >= 0]
 ## For numeric variables, do outlier detection
 whiffNumeric = whiffData[numericCols]
 
+## For each column, detect outliers (more than 3 standard deviations from the mean) 
 for col in numericCols:
     outliers = whiffNumeric[~(np.abs(whiffNumeric[col] - whiffNumeric[col].mean()) < (3 *whiffNumeric[col].std()))]
     
@@ -94,21 +109,21 @@ for col in numericCols:
 ## Problem: several zeros in data (very unlikely), around ~50 rows 
 ## Options: impute data OR get rid of 50 more rows. To decide, we conduct another skew analysis 
 
-whiffZeros = whiffData[whiffData.SpinRate == 0]
+## Subset the dataset to the cases where Spin Rate is 0, we'll call this the Spin 0 Dataset
+spinZero = whiffData[whiffData.SpinRate == 0]
+
+## For each column, compare mean values from the Full Dataset to the Spin0 Dataset
 for col in numericCols: 
     originalMean = whiffData[col].mean()
-    zeroMean = whiffZeros[col].mean()
+    zeroMean = spinZero[col].mean()
 
     if noisy: 
         print(col, ': ', originalMean, ' ', zeroMean)
 
-if noisy:
-    print('>>>>>>>>>>>>>>>>>><<<<<<<<<<<<<<<<<')
-
-
+## For each categorical column, compare the values that show up in the Full Dataset versus the Spin0 Dataset
 for col in categoricalCols: 
     originalSet = set(whiffData[col])
-    zeroSet = set(whiffZeros[col])
+    zeroSet = set(spinZero[col])
 
     if noisy:
         print(col)
@@ -128,6 +143,7 @@ whiffData = whiffData[whiffData.SpinRate != 0]
 corrMatrix = pd.DataFrame(whiffData.corr()).abs()
 corrMatrix.loc['average'] = corrMatrix.mean()
 
+## Identify high correlation pairs
 high_corrs = []
 for idx,row in corrMatrix.iterrows(): 
     for col in corrMatrix.columns: 
@@ -138,7 +154,7 @@ if noisy:
     print(Counter(high_corrs))
 
 ## Pitch of Plate Appearance is correlated with Balls and Strikes, this we need to solve 
-## Release Speed is correlated (as expected) with Induced Vertical Break (these are considered distinct, so we keep both, despite the correlation)
+## Release Speed is correlated with Induced Vertical Break (these are considered distinct, so we keep both, despite the correlation)
 
 ## Pitch of Plate Appearance, Balls, and Strikes actually combine to say the same thing: Count
 ## So, instead of having 3 variables here, we construct a simple 'Count' categorical value 
@@ -165,23 +181,22 @@ whiffModelData = whiffData.drop(['Date', 'Year'], axis = 1)
 ## We choose this over other techniques, such as target encoding because we don't have too many categorical variables
 whiffModelData = pd.get_dummies(whiffModelData)
 
-
-## Separate predicting data (Independent Vars) with target data (Dependent Var)
+## WhiffModelData (full set) gets split up into WhiffModelData X and WhiffModelData Y
 whiffModelDataY = whiffModelData[['whiff_prob']]
 
-## We cannot directly influence swing probability OR whiff proability given swing
+## A pitcher cannot directly influence swing probability OR whiff proability given swing, so we don't include them in the model
 whiffModelDataX = whiffModelData.loc[:, whiffModelData.columns != 'whiff_prob']
 whiffModelDataX = whiffModelDataX.loc[:, whiffModelDataX.columns != 'swing_prob']
 whiffModelDataX = whiffModelDataX.loc[:, whiffModelDataX.columns != 'whiff_prob_gs']
 
-
 ## Changing the nature of SpinAxis
+## Spin axis is not a true continous variable (a higher number does not mean "more spin" it instead means an entirely different kind of spin)
 whiffModelDataX['TopSpin'] = 0
 whiffModelDataX['LeftSpin'] = 0
 whiffModelDataX['BackSpin'] = 0
 whiffModelDataX['RightSpin'] = 0
 
-
+## Here we identify the type of spin and then, if necessary, input the magnitude of the spin (ranging from 0 - 90)
 def topSpinMagnitude(spinAxis): 
     if spinAxis >= 0 and spinAxis < 90: 
         topSpinDiff = abs(spinAxis - 0)
@@ -240,7 +255,7 @@ for i in range(0, 10):
 
     val += .05
 
-
+## This is purely for Exploratory Data Analysis to categorize and plot the target variable
 whiffModelData['whiff_prob_category'] = 0
 whiffModelData['whiff_prob_category'] = np.where((whiffModelData['whiff_prob'] < 0.05) & (whiffModelData['whiff_prob'] > 0), 1, whiffModelData['whiff_prob_category'])
 whiffModelData['whiff_prob_category'] = np.where((whiffModelData['whiff_prob'] < 0.1) & (whiffModelData['whiff_prob'] > 0.05), 2, whiffModelData['whiff_prob_category'])
@@ -262,21 +277,10 @@ groupedMeans[['Inning', 'PAofInning', 'ReleaseSpeed', 'InducedVertBreak', 'HorzB
                             'BatterSide_Right', 'PitchType_CHANGEUP', 'PitchType_FASTBALL',
                             'PitchType_SLIDER']]
 
-'''
-## These are the variables that in this analysis, appear to be significant
-sigVars = ['ReleaseSpeed', 'InducedVertBreak', 'HorzBreak', 'PlateHeight', 'SpinRate', 'SpinAxis', 'swing_prob']
-'''
-
-
 #%%
 #####################################
 ### FEATURE SELECTION WITH BORUTA ###
 #####################################
-
-from sklearn.ensemble import RandomForestRegressor
-from boruta import BorutaPy
-import random
-
 
 ### Initialize Boruta
 forest = RandomForestRegressor(
@@ -294,17 +298,22 @@ boruta = BorutaPy(
 whiffModelDataX_Arr = whiffModelDataX.to_numpy()
 whiffModelDataY_Arr = whiffModelDataY.to_numpy()
 
-
+## Boruta has already been run so for future runs of this notebook we avoid a re-run
+## To re-run Boruta, switch runBortua to True
 runBoruta = False
+
 
 if runBoruta:
     boruta.fit(whiffModelDataX_Arr, whiffModelDataY_Arr)
-    ### print results
+
+    ## Green Area variables have been cleared as significant, blue area variables are still uncertain
     green_area = whiffModelDataX.columns[boruta.support_].to_list()
     blue_area = whiffModelDataX.columns[boruta.support_weak_].to_list()
     print('features in the green area:', green_area)
     print('features in the blue area:', blue_area)
 
+## Here are the columns to keep based on the boruta analysis 
+## Note: BatterSide was not shown as significant but was retained because of its impact on various other variables such as PlateSide, HorzBreak, etc
 columnsToKeep = [   'ReleaseSpeed',
                     'InducedVertBreak',
                     'HorzBreak',
@@ -317,7 +326,7 @@ columnsToKeep = [   'ReleaseSpeed',
                     'BatterSide_Left',
                     'PitchType_CHANGEUP',
                     'PitchType_FASTBALL',
-                    'PitchType_SLIDER'
+                    'PitchType_SLIDER',
                     'Count_00', 
                     'Count_01', 
                     'Count_02', 
@@ -329,11 +338,13 @@ columnsToKeep = [   'ReleaseSpeed',
                     'Count_22', 
                     'Count_30', 
                     'Count_31', 
-                    'Count_32'
+                    'Count_32',
                     'LeftSpin', 
                     'RightSpin',
                     'BackSpin',
-                    'TopSpin']
+                    'TopSpin',
+                    'BatterSide_Left', 
+                    'BatterSide_Right']
 
 # %%
 ###############################################
@@ -348,897 +359,231 @@ if runPairPlot:
                     y_vars=['whiff_prob'],
                     x_vars=columnsToKeep)
 
-## Appears to be a non-linear, perhaps radial relationship 
-
-
-
 
 #%%
-#########################################
-### MODEL IMPLEMENTATION, SVR - WHIFF ###
-#########################################
-
+#######################################
+### MODEL IMPLEMENTATION Parameters ###
+#######################################
 
 ## Baseline Model (with all variables included)
 ## Generate Model
-X = whiffModelData[columnsToKeep]
-y = whiffModelData['whiff_prob'].values.reshape(-1,1)
+X = whiffModelDataX[columnsToKeep]
+y = whiffModelDataY['whiff_prob'].values.reshape(-1,1)
 
-sc_X = StandardScaler()
-sc_y = StandardScaler()
-X = sc_X.fit_transform(X)
-y = sc_y.fit_transform(y)
+## Choosing to not scale in order to preserve the target variable range 
+#sc_X = StandardScaler()
+#sc_y = StandardScaler()
+#X = sc_X.fit_transform(X)
+#y = sc_y.fit_transform(y)
 
-x_train, x_test, y_train, y_test = train_test_split(X, y, test_size = 0.15, random_state = 25)
+x_train, x_test, y_train, y_test = train_test_split(X, y, test_size = 0.15, random_state = 20)
+
+#%%
+#################################
+### MODEL IMPLEMENTATION, SVR ###
+#################################
 
 regressor = SVR(kernel='rbf')
 regressor.fit(x_train,y_train)
-
-## Score Model 
 print('BASELINE MODEL SCORE (R2) :', regressor.score(x_test,y_test))
-print('>>>>>>>>>>>>>>>><<<<<<<<<<<<<<<<<<<<')
-
-## Model with one or two variables removed (loop can be edited)
-rsqValues = []
-for variable in tqdm(varsToInclude):
-    ## The second loop can be used to understand the impacts of interaction terms (or omitted)
-     for variable2 in varsToInclude:
-        varList = list(set(varsToInclude) - set([variable, variable2]))
-        
-        ## Generate Model
-        X = whiffModelData[varList]
-        y = whiffModelData['whiff_prob'].values.reshape(-1,1)
-
-        sc_X = StandardScaler()
-        sc_y = StandardScaler()
-        X = sc_X.fit_transform(X)
-        y = sc_y.fit_transform(y)
-
-        x_train, x_test, y_train, y_test = train_test_split(X, y, test_size = 0.15, random_state = 5)
-
-        regressor = SVR(kernel='rbf')
-        regressor.fit(x_train,y_train)
-        
-        ## Score Model
-        score = regressor.score(x_test, y_test)
-        rsqValues.append(score)
-
-        if score < 0.6 and noisy:
-            print(variable, variable2, score)
-
-## Plate Height and Swing Prob combine for 63%, essentially even contribution (slightly more towards plate height)
-
-### Significant variables: 
-sigVarsWhiff = ['PlateHeight', 'swing_prob']
-
-
-
 
 
 #%%
-###############################
-### PLATE HEIGHT - ANALYSIS ###
-############################### 
+#################################
+### MODEL IMPLEMENTATION, MLR ###
+#################################
 
-## Started off with all variables
-varsToInclude = ['Inning', 'PAofInning', 'ReleaseSpeed', 'InducedVertBreak', 'HorzBreak',
-                            'ReleaseHeight', 'ReleaseSide', 'Extension', 'PlateHeight', 'PlateSide',
-                            'SpinRate', 'SpinAxis', 'swing_prob',
-                            'BatterSide_Left',
-                            'BatterSide_Right', 'PitchType_CHANGEUP', 'PitchType_FASTBALL',
-                            'PitchType_SLIDER', 'Count_00', 'Count_01', 'Count_02', 'Count_10',
-                            'Count_11', 'Count_12', 'Count_20', 'Count_21', 'Count_22', 'Count_30',
-                            'Count_31', 'Count_32']
-
-## These were determined using backwards selection 
-varsToInclude = ['ReleaseSpeed', 'InducedVertBreak', 'HorzBreak', 'PlateHeight', 'SpinRate', 'SpinAxis', 'swing_prob']
-
-
-## Baseline Model (with all variables included)
-## Generate Model
-X = whiffModelData[varsToInclude]
-y = whiffModelData['whiff_prob'].values.reshape(-1,1)
-
-sc_X = StandardScaler()
-sc_y = StandardScaler()
-X = sc_X.fit_transform(X)
-y = sc_y.fit_transform(y)
-
-x_train, x_test, y_train, y_test = train_test_split(X, y, test_size = 0.15, random_state = 25)
-
-regressor = SVR(kernel='rbf')
-regressor.fit(x_train,y_train)
-
-## Score Model 
-print('BASELINE MODEL SCORE (R2) :', regressor.score(x_test,y_test))
-print('>>>>>>>>>>>>>>>><<<<<<<<<<<<<<<<<<<<')
-
-
-### Simulation - Whiff Rate Baseline
-deltas = []
-avgs = []
-for std in tqdm([1,2,3,4,5]):
-    for seed in list(range(1,101)):
-        seed = random.randint(1,1000)
-        x_train, x_test, y_train, y_test = train_test_split(X, y, test_size = 0.15, random_state = seed)
-
-        regressor = SVR(kernel='rbf')
-        regressor.fit(x_train,y_train)
-        #print('MODEL SCORE ', regressor.score(x_test,y_test))
-
-
-        x_testDF = pd.DataFrame(x_test)
-        x_testDF.columns = varsToInclude
-
-        preds = []
-        for idx, row in x_testDF.iterrows(): 
-            preds.append(regressor.predict(row.values.reshape(1,-1)))
-
-        ## Normalize Data to within 0 and 1 
-        minVal = min(preds)[0]
-        maxVal = max(preds)[0]
-        rangeVal = maxVal - minVal
-        scaledVals = []
-        for val in preds:
-            val = val[0]
-            scaledVal = (val - minVal) / (rangeVal)
-            scaledVals.append(scaledVal)
-
-        baselineAvg = sum(scaledVals) / len(scaledVals)
-
-        ### Simulation - Increase
-        oneStDev = abs(x_testDF['PlateHeight'].std())
-        x_testDF['PlateHeight'] = random.uniform(0.9,1.1) # x_testDF['PlateHeight'] - (std * oneStDev) 
-
-        preds = []
-        for idx, row in x_testDF.iterrows(): 
-            preds.append(regressor.predict(row.values.reshape(1,-1)))
-
-        ## Normalize Data to within 0 and 1 
-        minVal = min(preds)[0]
-        maxVal = max(preds)[0]
-        rangeVal = maxVal - minVal
-        scaledVals = []
-        for val in preds:
-            val = val[0]
-            scaledVal = (val - minVal) / (rangeVal)
-            scaledVals.append(scaledVal)
-
-        increasedAvg = sum(scaledVals) / len(scaledVals)
-
-        delta = (increasedAvg - baselineAvg) / baselineAvg 
-        deltas.append(delta)
-        #print('DELTA ', delta)
-        #print('----------------------------')
-
-    deltaAvg = sum(deltas) / len(deltas) * 100
-    avgs.append(deltaAvg)
-    if noisy:
-        print('Change Avg: ', deltaAvg)
-
-## Sanity check that it is not skewed based on batter side 
-whiffDataRighty = whiffData[whiffData.BatterSide == 'Right']
-whiffDataLefty = whiffData[whiffData.BatterSide == 'Left']
-
-## Note: these are pretty low correlations, but we aren't concerned 
-## Primarily because the model is likely reliant on iteraction terms instead of singular variables 
-## That is why we do the simulation test, to remove a variable and have it impact all interactions
-print(whiffDataRighty['PlateHeight'].corr(whiffDataRighty['swing_prob']))
-print(whiffDataLefty['PlateHeight'].corr(whiffDataLefty['swing_prob']))
-
-
-
-
+reg = LinearRegression().fit(x_train, y_train)
+reg.score(x_test, y_test)
 
 
 #%%
-#############################
-### SWING PROB - ANALYSIS ###
-#############################
+###########################################
+### MODEL IMPLEMENTATION, RANDOM FOREST ###
+###########################################
 
-## Tried backwise selection, but model performed better with all variables 
-varsToInclude = ['Inning', 'PAofInning', 'ReleaseSpeed', 'InducedVertBreak', 'HorzBreak',
-                            'ReleaseHeight', 'ReleaseSide', 'Extension', 'PlateHeight', 'PlateSide',
-                            'SpinRate', 'SpinAxis',
-                            'BatterSide_Left',
-                            'BatterSide_Right', 'PitchType_CHANGEUP', 'PitchType_FASTBALL',
-                            'PitchType_SLIDER', 'Count_00', 'Count_01', 'Count_02', 'Count_10',
-                            'Count_11', 'Count_12', 'Count_20', 'Count_21', 'Count_22', 'Count_30',
-                            'Count_31', 'Count_32']
+## Random Grid search has already been run, to re-run, turn runRandomGrid to True
+runRandomGrid = False 
 
+if runRandomGrid:
+    # Number of trees in random forest
+    n_estimators = [int(x) for x in np.linspace(start = 500, stop = 2000, num = 10)]
+    # Number of features to consider at every split
+    max_features = ['auto', 'sqrt']
+    # Maximum number of levels in tree
+    max_depth = [int(x) for x in np.linspace(10, 25, num = 10)]
+    max_depth.append(None)
+    # Minimum number of samples required at each leaf node
+    min_samples_leaf = [1, 2, 4, 10]
+    # Method of selecting samples for training each tree
+    bootstrap = [True, False]
+    # Create the random grid
+    random_grid = {'n_estimators': n_estimators,
+                'max_features': max_features,
+                'max_depth': max_depth,
+                'min_samples_leaf': min_samples_leaf,
+                'bootstrap': bootstrap}
 
-## Baseline Model 
-## Generate Model
-X = whiffModelData[varsToInclude]
-y = whiffModelData['swing_prob'].values.reshape(-1,1)
+    # Use the random grid to search for best hyperparameters
+    rf = RandomForestRegressor()
+    rf_random = RandomizedSearchCV(estimator = rf, param_distributions = random_grid, n_iter = 100, cv = 3, verbose=2, random_state=42, n_jobs = -1)
 
-sc_X = StandardScaler()
-sc_y = StandardScaler()
-X = sc_X.fit_transform(X)
-y = sc_y.fit_transform(y)
+    rf_random.fit(x_train, y_train)
+    rf_random.score(x_test, y_test)
 
-x_train, x_test, y_train, y_test = train_test_split(X, y, test_size = 0.15, random_state = 5)
+regr = RandomForestRegressor(max_depth=15, n_estimators = 2000, random_state= 1)
+regr.fit(x_train, y_train)
+regr.score(x_test,y_test)
 
-regressor = SVR(kernel='rbf')
-regressor.fit(x_train,y_train)
+for i,v in enumerate(regr.feature_importances_):
+	print('Feature: %0d, Score: %.5f' % (i,v))
 
-## Score Model
-score = regressor.score(x_test, y_test)
-print(score)
+featureImportanceDict = {'Features':columnsToKeep,'Importances':list(regr.feature_importances_)}
+featureImportanceDictDF = pd.DataFrame(featureImportanceDict, columns=['Features','Importances'])
 
-
-## Model with one or two variables removed (loop can be edited)
-rsqValues = []
-for variable in tqdm(varsToInclude):
-    ## The second loop can be used to understand the impacts of interaction terms (or omitted)
-     for variable2 in varsToInclude:
-        varList = list(set(varsToInclude) - set([variable, variable2]))
-        
-        ## Generate Model
-        X = whiffModelData[varList]
-        y = whiffModelData['swing_prob'].values.reshape(-1,1)
-
-        sc_X = StandardScaler()
-        sc_y = StandardScaler()
-        X = sc_X.fit_transform(X)
-        y = sc_y.fit_transform(y)
-
-        x_train, x_test, y_train, y_test = train_test_split(X, y, test_size = 0.15, random_state = 5)
-
-        regressor = SVR(kernel='rbf')
-        regressor.fit(x_train,y_train)
-        
-        ## Score Model
-        score = regressor.score(x_test, y_test)
-        rsqValues.append(score)
-
-        if score < 0.6 and noisy:
-            print(variable, variable2, score)
-
-### RESULT: Plate Side and Count have the biggest impacts (also Plate Height, but we have already covered that) 
-
-
-
-
-
+sns.barplot(y='Features', x='Importances', data=featureImportanceDictDF)
 
 #%%
-###################################
-### SWING PROB ANALYSIS - COUNT ###
-################################### 
+##########################
+### AVERAGE PREDICTION ###
+##########################
 
-
-
-## Let's split based off batter side 
-whiffDataRighty = whiffModelData[whiffModelData.BatterSide_Right == 1]
-whiffDataLefty = whiffModelData[whiffModelData.BatterSide_Left == 1]
-
-# print('swingProb', whiffModelData['swing_prob'].corr(whiffDataRighty['whiff_prob']))
-
-## Count 
-print('COUNT')
-for DF in [whiffDataRighty, whiffDataLefty]: 
-    print('00', DF['Count_00'].corr(DF['swing_prob']))
-    print('01', DF['Count_01'].corr(DF['swing_prob']))
-    print('02', DF['Count_02'].corr(DF['swing_prob']))
-    print('10', DF['Count_10'].corr(DF['swing_prob']))
-    print('11', DF['Count_11'].corr(DF['swing_prob']))
-    print('12', DF['Count_12'].corr(DF['swing_prob']))
-    print('20', DF['Count_20'].corr(DF['swing_prob']))
-    print('21', DF['Count_21'].corr(DF['swing_prob']))
-    print('22', DF['Count_22'].corr(DF['swing_prob']))
-    print('30', DF['Count_30'].corr(DF['swing_prob']))
-    print('31', DF['Count_31'].corr(DF['swing_prob']))
-    print('32', DF['Count_32'].corr(DF['swing_prob']))
-    print('>>>>>>>>>>>>>>><<<<<<<<<<<<<<<<<<')
-
-
-## Hard to "control" count, but this analysis will be woven into conclusions
-
-
-
-
+## Average whiff_prob prediction generated by the model, before any modification
+beforeMod = sum(regr.predict(x_test)) / len(regr.predict(x_test))
+beforeMod
 
 #%%
 ####################################
-### PLATE SIDE BASELINE ANALYSIS ###
+### SIGNIFICANT FEATURE ANALYSIS ###
 ####################################
 
-for threshhold in list(np.linspace(-3,3,100)):
-    avg = whiffDataRighty[abs(whiffDataRighty.PlateSide - threshhold) < .2]['swing_prob'].mean()
-    if noisy: 
-        print(threshhold, avg)
-
-## Right: Range of -0.4 to 0.4 for swing prob
-
-
-for threshhold in list(np.linspace(-2.5,3.5,100)):
-    avg = whiffDataLefty[abs(whiffDataLefty.PlateSide - threshhold) < .2]['swing_prob'].mean()
-    if noisy: 
-        print(threshhold, avg)
-
-## Right: Range of -0.5 to 0.2 for swing prob
-
-
-for threshhold in list(np.linspace(-3,3,100)):
-    avg = whiffDataRighty[abs(whiffDataRighty.PlateSide - threshhold) < .2]['whiff_prob'].mean()
-    if noisy: 
-        print(threshhold, avg)
-
-## Right: Range of -0.5 to 1.1 for whiff prob
-
-
-for threshhold in list(np.linspace(-2.5,3.5,100)):
-    avg = whiffDataLefty[abs(whiffDataLefty.PlateSide - threshhold) < .2]['whiff_prob'].mean()
-    if noisy: 
-        print(threshhold, avg)
-
-## Right: Range of -0.25 to 1.25 for whiff prob
-
-
-
-
-#%%
-##########################################
-### SWING PROB ANALYSIS - PLATE SIDE R ###
-##########################################
-
-## Plate Side Correlations
-if noisy:
-    print(whiffModelData['PlateSide'].corr(whiffModelData['swing_prob']))
-    print('Right', whiffDataRighty['PlateSide'].corr(whiffDataRighty['swing_prob']))
-    print('Left', whiffDataLefty['PlateSide'].corr(whiffDataLefty['swing_prob']))
-
-### Splitting By Right vs Left Side Batters
-### Plate Side, Righty ### 
-
-whiffDataRighty = whiffModelData[whiffModelData.BatterSide_Right == 1]
-
-### Generate Baseline Model
-## Started off with all variables
-varsToInclude = ['Inning', 'PAofInning', 'ReleaseSpeed', 'InducedVertBreak', 'HorzBreak',
-                            'ReleaseHeight', 'ReleaseSide', 'Extension', 'PlateHeight', 'PlateSide',
-                            'SpinRate', 'SpinAxis', 'swing_prob',
-                            'BatterSide_Left',
-                            'BatterSide_Right', 'PitchType_CHANGEUP', 'PitchType_FASTBALL',
-                            'PitchType_SLIDER', 'Count_00', 'Count_01', 'Count_02', 'Count_10',
-                            'Count_11', 'Count_12', 'Count_20', 'Count_21', 'Count_22', 'Count_30',
-                            'Count_31', 'Count_32']
-
-## These were determined using backwards selection 
-varsToInclude = ['ReleaseSpeed', 'InducedVertBreak', 'HorzBreak', 'PlateHeight', 'SpinRate', 'SpinAxis', 'swing_prob', 'PlateSide']
-
-
-## Baseline Model (with all variables included)
-## Generate Model
-X = whiffDataRighty[varsToInclude]
-y = whiffDataRighty['whiff_prob'].values.reshape(-1,1)
-
-sc_X = StandardScaler()
-sc_y = StandardScaler()
-X = sc_X.fit_transform(X)
-y = sc_y.fit_transform(y)
-
-x_train, x_test, y_train, y_test = train_test_split(X, y, test_size = 0.15, random_state = 25)
-
-regressor = SVR(kernel='rbf')
-regressor.fit(x_train,y_train)
-
-## Score Model 
-print('BASELINE MODEL SCORE (R2) :', regressor.score(x_test,y_test))
-print('>>>>>>>>>>>>>>>><<<<<<<<<<<<<<<<<<<<')
-
-
-### Simulation - Plate Side, Righty
-avgs = []
-for iter in tqdm([1,2,3,4,5]):
-    deltas = []
-    for seed in list(range(1,101)):
-        seed = random.randint(1,1000)
-        
-        ## Generate Model
-        x_train, x_test, y_train, y_test = train_test_split(X, y, test_size = 0.15, random_state = seed)
-
-        regressor = SVR(kernel='rbf')
-        regressor.fit(x_train,y_train)
-
-        x_testDF = pd.DataFrame(x_test)
-        x_testDF.columns = varsToInclude
-
-        ## Generate Predictions
-        preds = []
-        for idx, row in x_testDF.iterrows(): 
-            preds.append(regressor.predict(row.values.reshape(1,-1)))
-
-        ## Normalize Data to within 0 and 1, this methods retains the distribution
-        minVal = min(preds)[0]
-        maxVal = max(preds)[0]
-        rangeVal = maxVal - minVal
-        scaledVals = []
-        for val in preds:
-            val = val[0]
-            scaledVal = (val - minVal) / (rangeVal)
-            scaledVals.append(scaledVal)
-
-        baselineAvg = sum(scaledVals) / len(scaledVals)
-
-        ### Simulation - Change Values in Prediction Set
-        x_testDF['PlateSide'] = random.uniform(-0.5, 1.1)  
-
-        preds = []
-        for idx, row in x_testDF.iterrows(): 
-            preds.append(regressor.predict(row.values.reshape(1,-1)))
-
-        ## Normalize Data to within 0 and 1 
-        minVal = min(preds)[0]
-        maxVal = max(preds)[0]
-        rangeVal = maxVal - minVal
-        scaledVals = []
-        for val in preds:
-            val = val[0]
-            scaledVal = (val - minVal) / (rangeVal)
-            scaledVals.append(scaledVal)
-
-        changedAvg = sum(scaledVals) / len(scaledVals)
-
-        ## We use percent change here because the actual prediction values have lost meaning
-        ## One, because the prediction range is wider than the actual possible range of values (infinite range vs [0,1])
-        ## Two, because we have normalized the values 
-        delta = (changedAvg - baselineAvg) / baselineAvg 
-        deltas.append(delta)
-
-
-    deltaAvg = sum(deltas) / len(deltas) * 100
-    avgs.append(deltaAvg)
-    print(iter, ' Change Avg: ', deltaAvg)
-
-print(sum(avgs) / len(avgs))
-
-## Average improve of x16% in Whiff Rate 
-
-
-
-#%%
-##########################################
-### SWING PROB ANALYSIS - PLATE SIDE L ###
-##########################################
-
-
-### Splitting By Right vs Left Side Batters
-### Plate Side, Lefty ### 
-
-whiffDataLefty = whiffModelData[whiffModelData.BatterSide_Left == 1]
-
-### Generate Baseline Model
-## Started off with all variables
-varsToInclude = ['Inning', 'PAofInning', 'ReleaseSpeed', 'InducedVertBreak', 'HorzBreak',
-                            'ReleaseHeight', 'ReleaseSide', 'Extension', 'PlateHeight', 'PlateSide',
-                            'SpinRate', 'SpinAxis', 'swing_prob',
-                            'BatterSide_Left',
-                            'BatterSide_Right', 'PitchType_CHANGEUP', 'PitchType_FASTBALL',
-                            'PitchType_SLIDER', 'Count_00', 'Count_01', 'Count_02', 'Count_10',
-                            'Count_11', 'Count_12', 'Count_20', 'Count_21', 'Count_22', 'Count_30',
-                            'Count_31', 'Count_32']
-
-## These were determined using backwards selection 
-varsToInclude = ['ReleaseSpeed', 'InducedVertBreak', 'HorzBreak', 'PlateHeight', 'SpinRate', 'SpinAxis', 'swing_prob', 'PlateSide']
-
-
-## Baseline Model (with all variables included)
-## Generate Model
-X = whiffDataLefty[varsToInclude]
-y = whiffDataLefty['whiff_prob'].values.reshape(-1,1)
-
-sc_X = StandardScaler()
-sc_y = StandardScaler()
-X = sc_X.fit_transform(X)
-y = sc_y.fit_transform(y)
-
-x_train, x_test, y_train, y_test = train_test_split(X, y, test_size = 0.15, random_state = 25)
-
-regressor = SVR(kernel='rbf')
-regressor.fit(x_train,y_train)
-
-## Score Model 
-print('BASELINE MODEL SCORE (R2) :', regressor.score(x_test,y_test))
-print('>>>>>>>>>>>>>>>><<<<<<<<<<<<<<<<<<<<')
-
-
-### Simulation - Plate Side, Righty
-avgs = []
-for iter in tqdm([1,2,3,4,5]):
-    deltas = []
-    for seed in list(range(1,101)):
-        seed = random.randint(1,1000)
-        
-        ## Generate Model
-        x_train, x_test, y_train, y_test = train_test_split(X, y, test_size = 0.15, random_state = seed)
-
-        regressor = SVR(kernel='rbf')
-        regressor.fit(x_train,y_train)
-
-        x_testDF = pd.DataFrame(x_test)
-        x_testDF.columns = varsToInclude
-
-        ## Generate Predictions
-        preds = []
-        for idx, row in x_testDF.iterrows(): 
-            preds.append(regressor.predict(row.values.reshape(1,-1)))
-
-        ## Normalize Data to within 0 and 1, this methods retains the distribution
-        minVal = min(preds)[0]
-        maxVal = max(preds)[0]
-        rangeVal = maxVal - minVal
-        scaledVals = []
-        for val in preds:
-            val = val[0]
-            scaledVal = (val - minVal) / (rangeVal)
-            scaledVals.append(scaledVal)
-
-        baselineAvg = sum(scaledVals) / len(scaledVals)
-
-        ### Simulation - Change Values in Prediction Set
-        x_testDF['PlateSide'] = random.uniform(0.25,1.25)  
-
-        preds = []
-        for idx, row in x_testDF.iterrows(): 
-            preds.append(regressor.predict(row.values.reshape(1,-1)))
-
-        ## Normalize Data to within 0 and 1 
-        minVal = min(preds)[0]
-        maxVal = max(preds)[0]
-        rangeVal = maxVal - minVal
-        scaledVals = []
-        for val in preds:
-            val = val[0]
-            scaledVal = (val - minVal) / (rangeVal)
-            scaledVals.append(scaledVal)
-
-        changedAvg = sum(scaledVals) / len(scaledVals)
-
-        ## We use percent change here because the actual prediction values have lost meaning
-        ## One, because the prediction range is wider than the actual possible range of values (infinite range vs [0,1])
-        ## Two, because we have normalized the values 
-        delta = (changedAvg - baselineAvg) / baselineAvg 
-        deltas.append(delta)
-
-
-    deltaAvg = sum(deltas) / len(deltas) * 100
-    avgs.append(deltaAvg)
-    print(iter, ' Change Avg: ', deltaAvg)
-
-print(sum(avgs) / len(avgs))
-
-## Average improvement of x6%
-
-##################################################################
-### Weighted Average Improvement for Lefty and Righty Datasets ###
-##################################################################
-
-wAvg = ((16 * len(whiffDataRighty)) + (6 * len(whiffDataLefty))) / (len(whiffDataRighty) + len(whiffDataLefty))
-
-## OVERALL: x13.4% improvement
-
-#%%
-#########################################
-### PLATE SIDE ANALYSIS - ALTERNATIVE ###
-#########################################
-
-## Secondary analysis to corroborate trends and quantifications 
-## Reasoning behind this is because previous analysis of Plate Side was WRT Swing Prob, not Whiff Prob
-
-## Plate Side Right
-whiffDataRighty = whiffData[whiffData.BatterSide == 'Right']
-
-## Understand the distribution (previously confirmed to be normal)
-if noisy:
-    print(whiffDataRighty['PlateSide'].mean())
-    print(whiffDataRighty['PlateSide'].std())
-
-avgs = [] 
-avgswo = []
-for threshhold in list(np.linspace(-3,3,100)):
-    avg = whiffDataRighty[abs(whiffDataRighty.PlateSide - threshhold) < .2]['whiff_prob'].mean()
-
-    if math.isnan(avg):
-        continue
-
-    if threshhold > -0.5 and threshhold < 1.1:
-        avgs.append(avg)
-    else:
-        avgswo.append(avg)
-
-    #print(threshhold, '--->', avg)
-
-print('Without Optimal Range :', sum(avgswo) / len(avgswo))
-print('With Optimal Range :', sum(avgs) / len(avgs))
-
-## Findings: Righty Optimal Range: -0.5 to 1.1 feet
-
-
-## Plate Side Left
-whiffDataLefty = whiffData[whiffData.BatterSide == 'Left']
-
-## Understand the distribution (previously confirmed to be normal)
-if noisy:
-    print(whiffDataLefty['PlateSide'].mean())
-    print(whiffDataLefty['PlateSide'].std())
-
-avgs = [] 
-avgswo = []
-for threshhold in list(np.linspace(-3,3,100)):
-    avg = whiffDataLefty[abs(whiffDataLefty.PlateSide - threshhold) < .2]['whiff_prob'].mean()
-
-    if math.isnan(avg):
-        continue
-
-    if threshhold > 0.25 and threshhold < 1.25:
-        avgs.append(avg)
-    else:
-        avgswo.append(avg)
-
-    #print(threshhold, '--->', avg)
-
-print('Without Optimal Range :', sum(avgswo) / len(avgswo))
-print('With Optimal Range :', sum(avgs) / len(avgs))
-
-## Findings: Lefty Optimal Range: 0.25 to 1.25 feet
-
-
-
-
-
-#%%
-###############################################################
-### SIMULATION WITH OPTIMAL PLATE SIDE AND PLATE HEIGHT - R ###
-###############################################################
-
-
-### Splitting By Right vs Left Side Batters
-### Plate Side, Righty ### 
-
-whiffDataRighty = whiffModelData[whiffModelData.BatterSide_Right == 1]
-
-### Generate Baseline Model
-## Started off with all variables
-varsToInclude = ['Inning', 'PAofInning', 'ReleaseSpeed', 'InducedVertBreak', 'HorzBreak',
-                            'ReleaseHeight', 'ReleaseSide', 'Extension', 'PlateHeight', 'PlateSide',
-                            'SpinRate', 'SpinAxis', 'swing_prob',
-                            'BatterSide_Left',
-                            'BatterSide_Right', 'PitchType_CHANGEUP', 'PitchType_FASTBALL',
-                            'PitchType_SLIDER', 'Count_00', 'Count_01', 'Count_02', 'Count_10',
-                            'Count_11', 'Count_12', 'Count_20', 'Count_21', 'Count_22', 'Count_30',
-                            'Count_31', 'Count_32']
-
-## These were determined using backwards selection 
-varsToInclude = ['ReleaseSpeed', 'InducedVertBreak', 'HorzBreak', 'PlateHeight', 'SpinRate', 'SpinAxis', 'swing_prob', 'PlateSide']
-
-
-## Baseline Model (with all variables included)
-## Generate Model
-X = whiffDataRighty[varsToInclude]
-y = whiffDataRighty['whiff_prob'].values.reshape(-1,1)
-
-sc_X = StandardScaler()
-sc_y = StandardScaler()
-X = sc_X.fit_transform(X)
-y = sc_y.fit_transform(y)
-
-x_train, x_test, y_train, y_test = train_test_split(X, y, test_size = 0.15, random_state = 25)
-
-regressor = SVR(kernel='rbf')
-regressor.fit(x_train,y_train)
-
-## Score Model 
-print('BASELINE MODEL SCORE (R2) :', regressor.score(x_test,y_test))
-print('>>>>>>>>>>>>>>>><<<<<<<<<<<<<<<<<<<<')
-
-
-### Simulation - Plate Side, Righty
-avgs = []
-for iter in tqdm([1,2,3,4,5]):
-    deltas = []
-    for seed in list(range(1,101)):
-        seed = random.randint(1,1000)
-        
-        ## Generate Model
-        x_train, x_test, y_train, y_test = train_test_split(X, y, test_size = 0.15, random_state = seed)
-
-        regressor = SVR(kernel='rbf')
-        regressor.fit(x_train,y_train)
-
-        x_testDF = pd.DataFrame(x_test)
-        x_testDF.columns = varsToInclude
-
-        ## Generate Predictions
-        preds = []
-        for idx, row in x_testDF.iterrows(): 
-            preds.append(regressor.predict(row.values.reshape(1,-1)))
-
-        ## Normalize Data to within 0 and 1, this methods retains the distribution
-        minVal = min(preds)[0]
-        maxVal = max(preds)[0]
-        rangeVal = maxVal - minVal
-        scaledVals = []
-        for val in preds:
-            val = val[0]
-            scaledVal = (val - minVal) / (rangeVal)
-            scaledVals.append(scaledVal)
-
-        baselineAvg = sum(scaledVals) / len(scaledVals)
-
-        ### Simulation - Change Values in Prediction Set
-        x_testDF['PlateSide'] = random.uniform(-0.5, 1.1)  
-        x_testDF['PlateHeight'] = random.uniform(0.9,1.1) 
-
-        preds = []
-        for idx, row in x_testDF.iterrows(): 
-            preds.append(regressor.predict(row.values.reshape(1,-1)))
-
-        ## Normalize Data to within 0 and 1 
-        minVal = min(preds)[0]
-        maxVal = max(preds)[0]
-        rangeVal = maxVal - minVal
-        scaledVals = []
-        for val in preds:
-            val = val[0]
-            scaledVal = (val - minVal) / (rangeVal)
-            scaledVals.append(scaledVal)
-
-        changedAvg = sum(scaledVals) / len(scaledVals)
-
-        ## We use percent change here because the actual prediction values have lost meaning
-        ## One, because the prediction range is wider than the actual possible range of values (infinite range vs [0,1])
-        ## Two, because we have normalized the values 
-        delta = (changedAvg - baselineAvg) / baselineAvg 
-        deltas.append(delta)
-
-
-    deltaAvg = sum(deltas) / len(deltas) * 100
-    avgs.append(deltaAvg)
-    print(iter, ' Change Avg: ', deltaAvg)
-
-print(sum(avgs) / len(avgs))
-
-
-
-
-
-
-
-
-
-
-#%%
-###############################################################
-### SIMULATION WITH OPTIMAL PLATE SIDE AND PLATE HEIGHT - L ###
-###############################################################
-
-### Splitting By Right vs Left Side Batters
-### Plate Side, Lefty ### 
-
-whiffDataLefty = whiffModelData[whiffModelData.BatterSide_Left == 1]
-
-### Generate Baseline Model
-## Started off with all variables
-varsToInclude = ['Inning', 'PAofInning', 'ReleaseSpeed', 'InducedVertBreak', 'HorzBreak',
-                            'ReleaseHeight', 'ReleaseSide', 'Extension', 'PlateHeight', 'PlateSide',
-                            'SpinRate', 'SpinAxis', 'swing_prob',
-                            'BatterSide_Left',
-                            'BatterSide_Right', 'PitchType_CHANGEUP', 'PitchType_FASTBALL',
-                            'PitchType_SLIDER', 'Count_00', 'Count_01', 'Count_02', 'Count_10',
-                            'Count_11', 'Count_12', 'Count_20', 'Count_21', 'Count_22', 'Count_30',
-                            'Count_31', 'Count_32']
-
-## These were determined using backwards selection 
-varsToInclude = ['ReleaseSpeed', 'InducedVertBreak', 'HorzBreak', 'PlateHeight', 'SpinRate', 'SpinAxis', 'swing_prob', 'PlateSide']
-
-
-## Baseline Model (with all variables included)
-## Generate Model
-X = whiffDataLefty[varsToInclude]
-y = whiffDataLefty['whiff_prob'].values.reshape(-1,1)
-
-sc_X = StandardScaler()
-sc_y = StandardScaler()
-X = sc_X.fit_transform(X)
-y = sc_y.fit_transform(y)
-
-x_train, x_test, y_train, y_test = train_test_split(X, y, test_size = 0.15, random_state = 25)
-
-regressor = SVR(kernel='rbf')
-regressor.fit(x_train,y_train)
-
-## Score Model 
-print('BASELINE MODEL SCORE (R2) :', regressor.score(x_test,y_test))
-print('>>>>>>>>>>>>>>>><<<<<<<<<<<<<<<<<<<<')
-
-
-### Simulation - Plate Side, Righty
-avgs = []
-for iter in tqdm([1,2,3,4,5]):
-    deltas = []
-    for seed in list(range(1,101)):
-        seed = random.randint(1,1000)
-        
-        ## Generate Model
-        x_train, x_test, y_train, y_test = train_test_split(X, y, test_size = 0.15, random_state = seed)
-
-        regressor = SVR(kernel='rbf')
-        regressor.fit(x_train,y_train)
-
-        x_testDF = pd.DataFrame(x_test)
-        x_testDF.columns = varsToInclude
-
-        ## Generate Predictions
-        preds = []
-        for idx, row in x_testDF.iterrows(): 
-            preds.append(regressor.predict(row.values.reshape(1,-1)))
-
-        ## Normalize Data to within 0 and 1, this methods retains the distribution
-        minVal = min(preds)[0]
-        maxVal = max(preds)[0]
-        rangeVal = maxVal - minVal
-        scaledVals = []
-        for val in preds:
-            val = val[0]
-            scaledVal = (val - minVal) / (rangeVal)
-            scaledVals.append(scaledVal)
-
-        baselineAvg = sum(scaledVals) / len(scaledVals)
-
-        ### Simulation - Change Values in Prediction Set
-        x_testDF['PlateSide'] = random.uniform(-0.5,1.1)  
-        x_testDF['PlateHeight'] = random.uniform(0.9,1.1) 
-
-        preds = []
-        for idx, row in x_testDF.iterrows(): 
-            preds.append(regressor.predict(row.values.reshape(1,-1)))
-
-        ## Normalize Data to within 0 and 1 
-        minVal = min(preds)[0]
-        maxVal = max(preds)[0]
-        rangeVal = maxVal - minVal
-        scaledVals = []
-        for val in preds:
-            val = val[0]
-            scaledVal = (val - minVal) / (rangeVal)
-            scaledVals.append(scaledVal)
-
-        changedAvg = sum(scaledVals) / len(scaledVals)
-
-        ## We use percent change here because the actual prediction values have lost meaning
-        ## One, because the prediction range is wider than the actual possible range of values (infinite range vs [0,1])
-        ## Two, because we have normalized the values 
-        delta = (changedAvg - baselineAvg) / baselineAvg 
-        deltas.append(delta)
-
-
-    deltaAvg = sum(deltas) / len(deltas) * 100
-    avgs.append(deltaAvg)
-    print(iter, ' Change Avg: ', deltaAvg)
-
-print(sum(avgs) / len(avgs))
-
-## Average Improvement 28%
+### The Feature importance chart underscored Pitch Type (Fastball), Plate Side, Plate Height as significant features 
+### Here, we analyze how these variables can be leveraged to improve whiff_probability
+
+##################
+### Plate Side ###
+##################
+
+## Artificially Shift PlateSide value lower (towards left batter box) and see how the average whiff_prob prediction changes
+x_test_copy1 = x_test.copy()
+x_test_copy1['PlateSide'] = x_test_copy1['PlateSide'] - (x_test_copy1['PlateSide'] / 3)
+afterMod = sum(regr.predict(x_test_copy1)) / len(x_test_copy1)
+print('Left : ', afterMod)
+
+## Artificially Shift PlateSide value higher (towards right batter box) and see how the average whiff_prob prediction changes
+x_test_copy1 = x_test.copy()
+x_test_copy1['PlateSide'] = x_test_copy1['PlateSide'] + (x_test_copy1['PlateSide'] / 3)
+afterMod = sum(regr.predict(x_test_copy1)) / len(x_test_copy1)
+print('Right : ', afterMod)
+
+## Shifting plate side by 25-35% towards the left handed box improves whiff prob by almost a full 1% 
+
+####################
+### Plate Height ###
+#################### 
+
+## Artificially Shift PlateHeight up and see how the average whiff_prob prediction changes
+x_test_copy1 = x_test.copy()
+x_test_copy1['PlateHeight'] = x_test_copy1['PlateHeight'] + (x_test_copy1['PlateHeight'] / 3)
+afterMod = sum(regr.predict(x_test_copy1)) / len(x_test_copy1)
+print('Up : ', afterMod)
+
+## Artificially Shift PlateHeight down and see how the average whiff_prob prediction changes
+x_test_copy1 = x_test.copy()
+x_test_copy1['PlateHeight'] = x_test_copy1['PlateHeight'] - (x_test_copy1['PlateHeight'] / 3)
+afterMod = sum(regr.predict(x_test_copy1)) / len(x_test_copy1)
+print('Down : ', afterMod)
+
+## Shifting plate height by 25-35% towards the left handed box improves whiff prob by almost a full 1% 
+
+##################
+### Pitch Type ###
+##################
+
+## Replace Fastballs with Sliders and see how the average whiff_prob prediction changes
+x_test_copy1 = x_test.copy()
+x_test_copy1.loc[x_test_copy1['PitchType_FASTBALL'] > 0, 'PitchType_SLIDER'] = 1
+x_test_copy1.loc[x_test_copy1['PitchType_FASTBALL'] > 0, 'PitchType_FASTBALL'] = 0
+afterMod = sum(regr.predict(x_test_copy1)) / len(x_test_copy1)
+print('Slider : ', afterMod)
+
+## Shift Fastballs with Changeups and see how the average whiff_prob prediction changes
+x_test_copy1 = x_test.copy()
+x_test_copy1.loc[x_test_copy1['PitchType_FASTBALL'] > 0, 'PitchType_CHANGEUP'] = 1
+x_test_copy1.loc[x_test_copy1['PitchType_FASTBALL'] > 0, 'PitchType_FASTBALL'] = 0
+afterMod = sum(regr.predict(x_test_copy1)) / len(x_test_copy1)
+print('Changeup : ', afterMod)
+
+## Replacing Fastballs with Sliders/Changeups can increase whiff probability by almost 1.5% on a given pitch
+
+###########################
+### Combining Variables ###
+###########################
+
+## Shift PlateSide value lower (left batter box) and Plate Height lower
+x_test_copy1 = x_test.copy()
+x_test_copy1['PlateSide'] = x_test_copy1['PlateSide'] - (x_test_copy1['PlateSide'] / 3)
+x_test_copy1['PlateHeight'] = x_test_copy1['PlateHeight'] - (x_test_copy1['PlateHeight'] / 3)
+afterMod = sum(regr.predict(x_test_copy1)) / len(x_test_copy1)
+print('Left + Low : ', afterMod)
+
+## About +1.5% 
+
+
+### Shift Plate Height and Side Low and to the Left, make the pitch a Slider
+x_test_copy1 = x_test.copy()
+x_test_copy1['PlateSide'] = x_test_copy1['PlateSide'] - (x_test_copy1['PlateSide'] / 3)
+x_test_copy1['PlateHeight'] = x_test_copy1['PlateHeight'] - (x_test_copy1['PlateHeight'] / 3)
+x_test_copy1.loc[x_test_copy1['PitchType_FASTBALL'] > 0, 'PitchType_SLIDER'] = 1
+x_test_copy1.loc[x_test_copy1['PitchType_FASTBALL'] > 0, 'PitchType_FASTBALL'] = 0
+afterMod = sum(regr.predict(x_test_copy1)) / len(x_test_copy1)
+print('Left + Low, Slider : ', afterMod)
+
+## 18.6% - +7% 
+
+### Shift Plate Height and Side Low and to the Left, make the pitch a Changeup
+x_test_copy1 = x_test.copy()
+x_test_copy1['PlateSide'] = x_test_copy1['PlateSide'] - (x_test_copy1['PlateSide'] / 3)
+x_test_copy1['PlateHeight'] = x_test_copy1['PlateHeight'] - (x_test_copy1['PlateHeight'] / 3)
+x_test_copy1.loc[x_test_copy1['PitchType_FASTBALL'] > 0, 'PitchType_CHANGEUP'] = 1
+x_test_copy1.loc[x_test_copy1['PitchType_FASTBALL'] > 0, 'PitchType_FASTBALL'] = 0
+afterMod = sum(regr.predict(x_test_copy1)) / len(x_test_copy1)
+print('Left + Low, Changeup : ', afterMod)
+
+## 18.4% - +7% 
 
 ########################
-### Weighted Average ###
-######################## 
-wAvg = ((25 * len(whiffDataRighty)) + (28 * len(whiffDataLefty))) / (len(whiffDataRighty) + len(whiffDataLefty))
+## Check: Batter Side ##
+########################
 
-## The data confirms that when combined, these changes increase whiff prob by x26%
+### Low and to the Left, Slider versus Lefties
+x_test_copy1 = x_test.copy()
+x_test_copy1['BatterSide_Left'] = 1
+x_test_copy1['BatterSide_Right'] = 0
+x_test_copy1['PlateSide'] = x_test_copy1['PlateSide'] - (x_test_copy1['PlateSide'] / 3)
+x_test_copy1['PlateHeight'] = x_test_copy1['PlateHeight'] - (x_test_copy1['PlateHeight'] / 3)
+x_test_copy1.loc[x_test_copy1['PitchType_FASTBALL'] > 0, 'PitchType_CHANGEUP'] = 1
+x_test_copy1.loc[x_test_copy1['PitchType_FASTBALL'] > 0, 'PitchType_FASTBALL'] = 0
+afterMod = sum(regr.predict(x_test_copy1)) / len(x_test_copy1)
+print('Left + Low, Changeup verses Lefties : ', afterMod)
 
+### Low and to the Left, Slider versus Righties
+x_test_copy1 = x_test.copy()
+x_test_copy1['BatterSide_Left'] = 0
+x_test_copy1['BatterSide_Right'] = 1
+x_test_copy1['PlateSide'] = x_test_copy1['PlateSide'] - (x_test_copy1['PlateSide'] / 3)
+x_test_copy1['PlateHeight'] = x_test_copy1['PlateHeight'] - (x_test_copy1['PlateHeight'] / 3)
+x_test_copy1.loc[x_test_copy1['PitchType_FASTBALL'] > 0, 'PitchType_CHANGEUP'] = 1
+x_test_copy1.loc[x_test_copy1['PitchType_FASTBALL'] > 0, 'PitchType_FASTBALL'] = 0
+afterMod = sum(regr.predict(x_test_copy1)) / len(x_test_copy1)
+print('Left + Low, Changeup verses Righties : ', afterMod)
 
+## Generally the same
 
-#%%
-###################################
-### DISTRIBUTION VISUALIZATIONS ###
-###################################
+# %%
+################
+### FINDINGS ###
+################
 
-## Plate Side
-whiffDataLefty['PlateSide'].hist(bins = 30)
-whiffDataRighty['PlateSide'].hist(bins = 30)
-
-## Plate Height
-whiffData['PlateHeight'].hist(bins = 30)
+## We can produce a model with a R2 score of around 0.85 in order to predict whiff probability given a particular pitch 
+## Out model predicts that changes to Plate Height, Plate Side, and Pitch Type could yield a 60% increase in whiff probability (all else equal) 
