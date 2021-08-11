@@ -106,7 +106,7 @@ After running the model, I was also able to extract the most important features 
 ![alt text](https://github.com/aks5bx/MLB_Whiff_rate/blob/main/FeatureImportanceImage.png)
 
 
-## Investigating Important Features
+## Investigating Important Features with Feature Replacement Simulation
 
 Once I had identified the features that played the strongest roles in driving whiff_prob, I wanted to further understand how changes in this features impacted whiff_prob. For this analysis, I focused on the top three features: Plate Height, Plate Side, and Pitch Type. Drawing from my baseball knowledge, these variables made sense as major drivers of whiff_prob and the feature importance chart corroborated my thinking. 
 
