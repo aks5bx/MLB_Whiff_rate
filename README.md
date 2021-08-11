@@ -103,6 +103,8 @@ After utilizing a Random Grid Search to optimize parameters, I was able to find 
 
 After running the model, I was also able to extract the most important features to the model, which are shown below: 
 
+![alt text](https://github.com/aks5bx/MLB_Whiff_rate/blob/main/FeatureImportanceImage.png)
+
 
 ## Investigating Important Features
 
