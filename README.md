@@ -63,7 +63,7 @@ Some steps for data cleaning included:
 ### Feature Engineering 
 
 #### Count 
-The first step I took towards feature engineering was producing a pairplot between all variables and checking for variable correlation. Pitch of Plate Appearance was correlated with Balls and Strikes (understandably). In order to fix this problem, I considered what these variables were truly conveying. I realized that the combination of all three of these variables form a well-known variable in the baseball world: Count. So, I took these three variables and created a new categorical variable that displayed the count of the plate appearance (more information about Count here: https://www.rookieroad.com/baseball/101/count/#:~:text=The%20count%20in%20baseball%20is,or%20more%20than%20two%20strikes). 
+The first step I took towards feature engineering was producing a pairplot between all variables and checking for variable correlation. Pitch of Plate Appearance was correlated with Balls and Strikes (understandably). In order to fix this problem, I considered what these variables were truly conveying. I realized that the combination of all three of these variables form a well-known variable in the baseball world: Count. So, I took these three variables and created a new categorical variable that displayed the count of the plate appearance (more information about Count here: https://lastwordonsports.com/baseball/2021/05/20/whats-in-a-count/). 
 
 A couple of other variables were loosly correlated. However, after digging deeper into what the variables represented in a baseball context, I was able to determine that the variables are not significantly related. 
 
