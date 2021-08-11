@@ -62,15 +62,18 @@ Some steps for data cleaning included:
 
 ### Feature Engineering 
 
+#### Count 
 The first step I took towards feature engineering was producing a pairplot between all variables and checking for variable correlation. Pitch of Plate Appearance was correlated with Balls and Strikes (understandably). In order to fix this problem, I considered what these variables were truly conveying. I realized that the combination of all three of these variables form a well-known variable in the baseball world: Count. So, I took these three variables and created a new categorical variable that displayed the count of the plate appearance (more information about Count here: https://www.rookieroad.com/baseball/101/count/#:~:text=The%20count%20in%20baseball%20is,or%20more%20than%20two%20strikes). 
 
 A couple of other variables were loosly correlated. However, after digging deeper into what the variables represented in a baseball context, I was able to determine that the variables are not significantly related. 
 
+#### Other Steps 
 Afterwards, I took a few additional steps to further feature engineering: 
 - Removed unneeded variables (eg: Year and Date were removed because these are not variables that the pitcher can modify to improve performance) 
 - Made categorical variables into dummy variables 
 - Removed swing_prob and whiff_prob_gs; these variables are almost completely uncorrelated to whiff_prob and are not variables the pitcher can control; these variables are determined by the pitch attributes (and how they are determined is completely unknown), which makes them difficult to use and interpret 
 
+#### Spin Axis
 Next, I took a look at the variable spin_axis. spin_axis was given to me as a continuous variable from 0 to 360. However, I realized that increasing spin_axis did not mean increasing spin. Instead, increasing spin axis creates a completely different type of spin. From the metadata, we know: 0 is true topsin; 180 pure backspin; 90 sidespin towards left-handed batter's box; 270 sidespin towards right-handed batter's box. So, I took the variable spin_axis and broke it up into four variables; TopSpin, RightSpin, LeftSpin, and BackSpin. I then converted the spin_axis variable from a 0-360 range to a 0-90 range. For instance, if BackSpin is 0 that means there is no backspin on the ball. If BackSpin is 90, that means that there is true, pure backspin on the ball. This principle extends to all types of spin. By definition there cannot be backspin and topspin and there also cannot be rightspin and leftspin. 
 
 ### Feature Selection
