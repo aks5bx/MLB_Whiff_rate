@@ -441,7 +441,7 @@ for i,v in enumerate(regr.feature_importances_):
 featureImportanceDict = {'Features':columnsToKeep,'Importances':list(regr.feature_importances_)}
 featureImportanceDictDF = pd.DataFrame(featureImportanceDict, columns=['Features','Importances'])
 
-sns.barplot(y='Features', x='Importances', data=featureImportanceDictDF)
+sns.barplot(y='Features', x='Importances', data=featureImportanceDictDF).set_title('Feature Importances')
 
 #%%
 ##########################
