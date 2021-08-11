@@ -19,7 +19,7 @@ The data contains many columns and so a preview of the data is not included. How
 The columns in the dataset are as follows: 
 
 Variable | Explanation | 
---- | --- | --- |
+| --- | --- |
 
 Date| Date pitch was thrown on|
 Year| Season that pitch was from|
