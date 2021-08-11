@@ -20,7 +20,6 @@ The columns in the dataset are as follows:
 
 Variable | Explanation | 
 | --- | --- |
-
 Date| Date pitch was thrown on|
 Year| Season that pitch was from|
 Pitcher| Pitcher identity|
