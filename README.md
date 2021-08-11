@@ -17,30 +17,33 @@ The data was provided in a single csv file with additional metadata provided in 
 The data contains many columns and so a preview of the data is not included. However, the original data source is included in the repo in the file PitcherXData.csv. 
 
 The columns in the dataset are as follows: 
-- Date: Date pitch was thrown on
-- Year: Season that pitch was from
-- Pitcher: Pitcher identity
-- PitcherThrows: Pitcher handedness
-- Inning: nth inning of the game
-- PAofInning: nth batter of the inning
-- BatterSide: Batter handedness
-- PitchofPA: nth pitch thrown to this batter in this plate appearance
-- Balls: Balls in count before pitch is thrown
-- Strikes: Strikes in count before pitch is thrown
-- PitchType: The classification of the pitch thrown
-- ReleaseSpeed: Velocity of pitch
-- InducedVertBreak: Vertical movement of pitch, in inches, where zero is a "gravity-only" trajectory
-- HorzBreak: Horizontal movement of pitch, in inches
-- ReleaseHeight: Distance above ground pitch was released from, in feet
-- ReleaseSide: Distance from center of mound pitch was release from, in feet, positive numbers indicate closer to 3B side of diamond
-- Extension: Distance in front of the mound (towards the plate) that pitch was released, in feet
-- PlateHeight: Distance above ground that pitch crosses the plate, in feet, zero is at ground level
-- PlateSide: Distance from centerline of plate that pitch crosses, in feet, positive numbers indicate closer to right-handed batter's box
-- SpinRate: How fast the pitch was spinning, in rotations per minute
-- SpinAxis: The angle or "tilt" that the pitch was spinning at; 0 is true topsin; 180 pure backspin; 90 sidespin towards left-handed batter's box; 270 sidespin towards right-handed batter's box
-- swing_prob: The probability that given the metrics above, this pitch will result in a swing
-- whiff_prob_gs: The probability that given a swing, the hitter will miss (whiff probability conditional onswing)
-- whiff_prob The: probability that given the metrics above, this pitch
+
+Variable | Explanation | 
+--- | --- | --- |
+Date| Date pitch was thrown on|
+Year| Season that pitch was from|
+Pitcher| Pitcher identity|
+PitcherThrows| Pitcher handedness|
+Inning| nth inning of the game|
+PAofInning| nth batter of the inning|
+BatterSide| Batter handedness|
+PitchofPA| nth pitch thrown to this batter in this plate appearance|
+Balls| Balls in count before pitch is thrown|
+Strikes| Strikes in count before pitch is thrown|
+PitchType| The classification of the pitch thrown|
+ReleaseSpeed| Velocity of pitch|
+InducedVertBreak| Vertical movement of pitch, in inches, where zero is a "gravity-only" trajectory|
+HorzBreak| Horizontal movement of pitch, in inches|
+ReleaseHeight| Distance above ground pitch was released from, in feet|
+ReleaseSide| Distance from center of mound pitch was release from, in feet, positive numbers indicate closer to 3B side of diamond|
+Extension| Distance in front of the mound (towards the plate) that pitch was released, in feet|
+PlateHeight| Distance above ground that pitch crosses the plate, in feet, zero is at ground level|
+PlateSide| Distance from centerline of plate that pitch crosses, in feet, positive numbers indicate closer to right-handed batter's box|
+SpinRate| How fast the pitch was spinning, in rotations per minute|
+SpinAxis| The angle or "tilt" that the pitch was spinning at; 0 is true topsin; 180 pure backspin; 90 sidespin towards left-handed batter's box; 270 sidespin towards right-handed batter's box|
+swing_prob| The probability that given the metrics above, this pitch will result in a swing|
+whiff_prob_gs| The probability that given a swing, the hitter will miss (whiff probability conditional onswing)|
+whiff_prob The| probability that given the metrics above, this pitch|
 
 The target variable is the final variable listed: whiff_prob (whiff probability)
 
